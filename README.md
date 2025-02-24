@@ -1,17 +1,14 @@
 # **Tennis Ball Bot** 🤖  
+Work-in-Progress. See the [project notebook](https://github.com/itstrieu/tennis-ball-bot/blob/main/project_notebook.ipynb) for project plans and progress. 
 
 ## **Overview**  
 Tennis Ball Bot is a vision-powered robotic system designed to detect and track tennis balls using **YOLOv8** and the **HAiLO AI Hat+** for real-time inference. The bot integrates object detection with sensor-based decision-making to autonomously locate tennis balls and navigate towards them.  
 
----
-
 ## **Features**  
-✅ **Real-time Object Detection** – Fine-tuned **YOLOv8** model detects tennis balls efficiently.  
-✅ **Edge AI Deployment** – Optimized inference on **HAiLO AI Hat+** with HEF format.  
-✅ **Sensor Integration** – Uses **ultrasonic sensors** to confirm ball proximity.  
-✅ **Autonomous Movement** – Moves towards detected tennis balls based on AI predictions.  
-
----
+- **Real-time Object Detection** – Fine-tuned **YOLOv8** model detects tennis balls efficiently.  
+- **Edge AI Deployment** – Optimized inference on **HAiLO AI Hat+** with HEF format.  
+- **Sensor Integration** – Uses **ultrasonic sensors** to confirm ball proximity.  
+- **Autonomous Movement** – Moves towards detected tennis balls based on AI predictions.  
 
 ## **Project Structure**  
 ```
@@ -25,15 +22,12 @@ Tennis Ball Bot is a vision-powered robotic system designed to detect and track 
  ├── 📜 requirements.txt  # Dependencies and environment setup  
  └── 📜 LICENSE           # Project licensing information  
 ```
----
 
 ## **Hardware Requirements**  
 - **HAiLO AI Hat+** for edge computing  
 - **Raspberry Pi / Arduino** for motor control  
 - **Ultrasonic / LIDAR sensor** for distance measurement  
 - **Differential drive system** for movement  
-
----
 
 ## **Evaluation Metrics**  
 The model is optimized for:  
