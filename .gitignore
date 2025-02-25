@@ -37,8 +37,8 @@ cache/
 *.npz
 
 # Ignore virtual environment
-venv/
-.env
+pi-yolo/
+private_drafts/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
