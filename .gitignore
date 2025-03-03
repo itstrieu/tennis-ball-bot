@@ -1,5 +1,6 @@
 # Ignore all files in the data folder
 data/
+private_drafts/
 
 # Ignore compiled model weights and checkpoints
 *.h5
