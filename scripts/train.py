@@ -1,25 +1,62 @@
-"""
-train.py - Fine-tunes YOLOv8n and monitors training with Prometheus.
-"""
-
+import os
 import time
 import torch
+import mlflow
+import mlflow.pytorch
 from ultralytics import YOLO
-from prometheus_client import start_http_server, Gauge
+import yaml
 
 # Constants
-PROMETHEUS_PORT = 8001
-DATA_YAML_PATH = "data.yaml"
-MAX_EPOCHS = 50
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+DATA_YAML_PATH = os.path.join(BASE_DIR, "data.yaml")
+MAX_EPOCHS = 10  # Reduced for test training
 BATCH_SIZE = 16
+EXPERIMENT_NAME = "tennis-ball-bot-draft-train"
 
-# Prometheus Metrics
-LOSS_GAUGE = Gauge("training_loss", "Current training loss")
-MAP50_GAUGE = Gauge("map50", "Mean Average Precision @ 50 IoU")
-BATCH_TIME_GAUGE = Gauge("batch_time", "Time taken per batch")
-GPU_USAGE_GAUGE = Gauge("gpu_memory_usage_mb", "GPU memory usage in MB")
-GPU_UTILIZATION_GAUGE = Gauge("gpu_utilization", "GPU utilization percentage")
+# ✅ Set MLflow Tracking URI
+mlflow.set_tracking_uri("file:C:/Users/Dog/Documents/github/tennis-ball-bot/mlruns")
 
+# Set MLflow experiment
+mlflow.set_experiment(EXPERIMENT_NAME)
+
+def train(config):
+    """
+    Runs the YOLO training loop with MLflow monitoring.
+    """
+    # ✅ Ensure MLflow logs under the correct experiment
+    experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
+    if experiment is None:
+        print(f"⚠️ Experiment '{EXPERIMENT_NAME}' does not exist! Creating...")
+        experiment_id = mlflow.create_experiment(EXPERIMENT_NAME)
+    else:
+        experiment_id = experiment.experiment_id
+
+    print(f"✅ MLflow Experiment ID: {experiment_id}")
+
+    with mlflow.start_run(experiment_id=experiment_id):
+        mlflow.log_param("epochs", config.epochs)
+        mlflow.log_param("batch_size", config.batch_size)
+        mlflow.log_param("device", config.device)
+
+        # ✅ Train model while forcing logs into the correct experiment
+        results = config.model.train(
+            data=config.data_yaml,
+            epochs=config.epochs,  # Best practice
+            batch=config.batch_size,
+            device=config.device,
+        )
+
+        metrics = results.results_dict
+        print(f"📊 YOLO Training Metrics: {metrics}")
+
+        mlflow.log_metric("training_loss", metrics.get("loss/box_loss", 0))
+        mlflow.log_metric("mAP50", metrics.get("metrics/mAP50", 0))
+        mlflow.log_metric("mAP50-95", metrics.get("metrics/mAP50-95", 0))
+
+        # ✅ Log trained weights instead of the full model
+        mlflow.log_artifact(config.model.ckpt_path, artifact_path="model")
+
+        print(f"✅ Training completed: Loss={metrics.get('loss/box_loss', 0)}, mAP@50={metrics.get('metrics/mAP50', 0)}")
 
 class TrainingConfig:
     """Holds YOLO training configuration settings."""
@@ -31,55 +68,16 @@ class TrainingConfig:
         self.device = device
         self.model = model
 
-
-def monitor_gpu():
-    """
-    Monitors and updates GPU memory and utilization metrics.
-    """
-    if torch.cuda.is_available():
-        gpu_memory = torch.cuda.memory_allocated(0) / (1024 * 1024)  # Convert to MB
-        gpu_utilization = torch.cuda.utilization(0)  # GPU Utilization %
-
-        GPU_USAGE_GAUGE.set(gpu_memory)
-        GPU_UTILIZATION_GAUGE.set(gpu_utilization)
-
-
-def train(config):
-    """
-    Runs the YOLO training loop with Prometheus monitoring.
-    """
-    for epoch in range(config.epochs):
-        start_time = time.time()
-
-        results = config.model.train(
-            data=config.data_yaml,
-            epochs=1,  # Train one epoch at a time to monitor results
-            batch=config.batch_size,
-            device=config.device,
-        )
-
-        # Extract metrics
-        loss = results.results[0]  # Loss
-        map50 = results.results[1]  # mAP@50
-
-        # Update Prometheus metrics
-        LOSS_GAUGE.set(loss)
-        MAP50_GAUGE.set(map50)
-        BATCH_TIME_GAUGE.set(time.time() - start_time)
-
-        monitor_gpu()
-
-        print(f"Epoch {epoch+1}: Loss={loss}, mAP@50={map50}")
-
-
 if __name__ == "__main__":
-    start_http_server(PROMETHEUS_PORT)  # Start Prometheus server
+    print("🔄 Preparing training configuration...")
 
-    # Load YOLO model
-    yolo_model = YOLO("yolov8n.pt")  # Load pre-trained YOLOv8 nano
+    # Step 1: Load YOLO model
+    yolo_model = YOLO("yolov8n.pt")
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     yolo_model.to(DEVICE)
 
-    # Create training config and start training
+    # Step 2: Create training config and start training
     config = TrainingConfig(DATA_YAML_PATH, MAX_EPOCHS, BATCH_SIZE, DEVICE, yolo_model)
     train(config)
+
+    print("✅ Training complete!")
