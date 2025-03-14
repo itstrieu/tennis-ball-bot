@@ -14,7 +14,7 @@ BATCH_SIZE = 16
 EXPERIMENT_NAME = "tennis-ball-bot-draft-train"
 
 # Set MLflow Tracking URI
-mlflow.set_tracking_uri("file:C:/Users/Dog/Documents/github/tennis-ball-bot/mlruns")
+mlflow.set_tracking_uri("")  # replace later
 
 # Set MLflow experiment
 mlflow.set_experiment(EXPERIMENT_NAME)
