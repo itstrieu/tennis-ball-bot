@@ -8,11 +8,11 @@ Build a robot that can identify and pick up tennis balls autonomously.
 
 #### **Machine Learning & Computer Vision**
 
-Object detection, YOLO (YOLOv4-tiny, YOLOv5, YOLOv8), model training, MLflow, hyperparameter tuning, experiment tracking, OpenCV, image processing, data augmentation, PyTorch, TensorFlow.
+Object detection, YOLO (YOLOv8), model training, MLflow, hyperparameter tuning, experiment tracking, OpenCV, image processing, data augmentation.
 
 #### **Software Development & Deployment**
 
-Python, NumPy, Pandas, Matplotlib, Scipy, Git, GitHub, CI/CD, GitHub Actions, SSH, SCP, Raspberry Pi deployment.
+Python, Pandas, Git, GitHub, CI/CD, GitHub Actions, SSH, Raspberry Pi deployment.
 
 #### **Embedded Systems & Hardware**
 
