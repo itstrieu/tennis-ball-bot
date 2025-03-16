@@ -4,17 +4,23 @@ import torch
 import mlflow
 import mlflow.pytorch
 from ultralytics import YOLO
-import yaml
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Constants
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-DATA_YAML_PATH = os.path.join(BASE_DIR, "data.yaml")
-MAX_EPOCHS = 10  # Reduced for test training
-BATCH_SIZE = 16
-EXPERIMENT_NAME = "tennis-ball-bot-draft-train"
+DATA_YAML_PATH = os.getenv("DATA_YAML_PATH", "data.yaml")
+MAX_EPOCHS = int(os.getenv("MAX_EPOCHS", 10))  # Reduced for test training
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", 16))
+EXPERIMENT_NAME = os.getenv("EXPERIMENT_NAME", "tennis-ball-bot-draft-train")
 
-# Set MLflow Tracking URI
-mlflow.set_tracking_uri("")  # replace later
+# Set MLflow Tracking URI for local tracking
+MLFLOW_TRACKING_URI = "file:" + os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "mlruns")
+)
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
 
 # Set MLflow experiment
 mlflow.set_experiment(EXPERIMENT_NAME)
@@ -76,7 +82,7 @@ class TrainingConfig:
 if __name__ == "__main__":
     print("Preparing training configuration...")
 
-    # Step 1: Load YOLO model
+    # Step 1: Load YOLO base model (not fine-tuned)
     yolo_model = YOLO("yolov8n.pt")
     DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     yolo_model.to(DEVICE)
