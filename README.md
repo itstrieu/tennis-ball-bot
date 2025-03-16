@@ -1,5 +1,5 @@
 # **Tennis Ball Bot** 🤖  
-Work-in-Progress. See the [project notebook](https://github.com/itstrieu/tennis-ball-bot/blob/main/project_notebook.ipynb) for project plans and progress.  
+Work-in-Progress. See the [project notebook](https://github.com/itstrieu/tennis-ball-bot/blob/main/project_notebook.md) for project plans and progress.  
 
 ## **Overview**  
 Tennis Ball Bot is a vision-powered robotic system designed to detect and track tennis balls using **YOLOv8** and the **HAiLO AI Hat+** for real-time inference. The bot integrates object detection with sensor-based decision-making to autonomously locate and navigate towards tennis balls.  
