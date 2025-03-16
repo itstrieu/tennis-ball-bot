@@ -40,19 +40,28 @@
 - [ ] Run training for multiple epochs and evaluate model performance
 - [ ] Compare results with initial test training and refine hyperparameters
 
-### 7. Refactor Codebase for Modularity (Without ChatGPT)
+### 7. Optimize YOLO Model for HAiLO AI Hat+ (HEF Format)
+- [ ] Convert trained YOLO model to **ONNX format**
+- [ ] Optimize ONNX model using **Hailo Model Zoo** tools
+- [ ] Apply **quantization** to reduce model size while maintaining accuracy
+- [ ] Convert optimized model to **HEF (HAiLO Executable Format)**
+- [ ] Test HEF model inference on HAiLO AI Hat+  
+- [ ] Benchmark performance (FPS, latency, accuracy) before and after optimization  
+- [ ] Ensure model is **compatible with edge deployment constraints**  
+
+### 8. Reorganize the Scripts to Be More Modular (Without ChatGPT)
 - [ ] Split training script into separate modules (data processing, model training, evaluation, logging)
 - [ ] Refactor FastAPI endpoints for better structure and maintainability
 - [ ] Ensure all scripts work independently but integrate seamlessly
 - [ ] Document key functions and scripts for easier debugging
 
-### 8. Implement Automated Retraining Pipeline
+### 9. Implement Automated Retraining Pipeline
 - [ ] Store new labeled detection data for future retraining
 - [ ] Automate model training when enough new data is collected
 - [ ] Validate model accuracy and only deploy updates if performance improves
 - [ ] Deploy updated model to Raspberry Pi automatically and roll back if needed
 
-### 9. Set Up CI/CD Using GitHub Actions
+### 10. Set Up CI/CD Using GitHub Actions
 - [ ] Create a workflow to automatically test scripts on every push
 - [ ] Automate model training execution in the cloud
 - [ ] Deploy trained model to Raspberry Pi when retraining completes
@@ -60,21 +69,21 @@
 - [ ] Ensure model versioning, rollback functionality, and deployment logs
 - [ ] Run automated tests post-deployment to verify functionality
 
-### 10. Test and Optimize Hardware Components
+### 11. Test and Optimize Hardware Components
 - [x] Tested motors for the wheels
 - [x] Tested motor for the rotating cylinder
 - [ ] Optimize motor control for efficiency, responsiveness, and reliability
 - [ ] Test Raspberry Pi power management and overheating prevention
 - [ ] Ensure all hardware components work under real-world conditions
 
-### 11. Program and Sync Robot Functionality
+### 12. Program and Sync Robot Functionality
 - [ ] Program robot movement for basic navigation
 - [ ] Program and test the onboard sensors (e.g., obstacle detection, ball detection)
 - [ ] Sync movement control with YOLO object detection outputs
 - [ ] Sync movement control with sensor input for adaptive navigation
 - [ ] Implement failsafe mechanisms (e.g., stopping if object detection fails)
 
-### 12. (Optional) Build a Custom React Frontend for Monitoring
+### 13. (If time permits) Build a Custom React Frontend for Monitoring
 - [ ] Create a React app to display live video feed and real-time stats
 - [ ] Deploy React frontend to Cloudflare Pages
 - [ ] Connect React frontend to FastAPI and Grafana APIs
