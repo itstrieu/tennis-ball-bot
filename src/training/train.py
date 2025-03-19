@@ -60,6 +60,8 @@ def train(config, experiment_id, device, data_yaml):
                     "epochs": config.epochs,
                     "batch_size": config.batch_size,
                     "device": str(device),
+                    "cache": config.cache,
+                    "profile": config.profile,
                 }
             )
 
@@ -69,6 +71,8 @@ def train(config, experiment_id, device, data_yaml):
                 epochs=config.epochs,
                 batch=config.batch_size,
                 device=device,
+                cache=config.cache,
+                profile=config.profile,
             )
 
             # Extract training metrics

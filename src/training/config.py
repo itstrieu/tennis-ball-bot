@@ -31,6 +31,8 @@ class TrainingConfig:
         self.data_yaml = os.path.abspath(self.config["training"]["data_yaml"])
         self.epochs = self.config["training"]["max_epochs"]
         self.batch_size = self.config["training"]["batch_size"]
+        self.cache = self.config["training"]["cache"]
+        self.profile = self.config["training"]["profile"]
 
         # MLflow Tracking URI (Ensure correct format for Windows)
         tracking_path = os.getenv("MLFLOW_TRACKING_URI", self.config_path)
