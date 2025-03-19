@@ -8,7 +8,7 @@ import logging
 
 # Create and configure logger
 logging.basicConfig(
-    filename=os.path.join(os.getcwd(), "newfile.log"),
+    filename=os.path.join(os.getcwd(), "yolo_experiment.log"),
     format="%(name)s %(asctime)s %(levelname)s - %(message)s",
     filemode="a",
     force=True,
