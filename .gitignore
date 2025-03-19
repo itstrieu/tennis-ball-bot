@@ -41,9 +41,11 @@ cache/
 pi-yolo/
 private_drafts/
 mlruns/
+runs/
 download_model.py
 BACKUP/
 .env
+dist.py
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
