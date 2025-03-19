@@ -36,6 +36,7 @@ logs/
 cache/
 *.npy
 *.npz
+*.pyc
 
 # Ignore virtual environment
 pi-yolo/
