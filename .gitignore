@@ -41,10 +41,9 @@ cache/
 pi-yolo/
 private_drafts/
 mlruns/
-phone_batch_3/
-split_val.py
 download_model.py
 BACKUP/
+.env
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
