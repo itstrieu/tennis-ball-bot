@@ -47,6 +47,7 @@ download_model.py
 BACKUP/
 .env
 dist.py
+error_analysis_main.py
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
