@@ -3,8 +3,20 @@ import torch
 import mlflow
 import mlflow.pytorch
 from ultralytics import YOLO
-from utils.logger import logger
 from training.config import TrainingConfig
+import logging
+
+# Create and configure logger
+logging.basicConfig(
+    filename=os.path.join(os.getcwd(), "newfile.log"),
+    format="%(name)s %(asctime)s %(levelname)s - %(message)s",
+    filemode="a",
+    force=True,
+    level=logging.INFO,
+)
+
+# Create a logger
+logger = logging.getLogger(__name__)
 
 
 def setup_mlflow(config):
@@ -16,14 +28,10 @@ def setup_mlflow(config):
     mlflow.set_tracking_uri(config.tracking_uri)
 
     try:
-        experiment = mlflow.get_experiment_by_name(
-            "sanity-check-after-refactoring"
-        )  # Experiment name is static now
+        experiment = mlflow.get_experiment_by_name(config.experiment_name)
         if experiment is None:
-            logger.info(
-                "Creating a new MLflow experiment: sanity-check-after-refactoring"
-            )
-            experiment_id = mlflow.create_experiment("sanity-check-after-refactoring")
+            logger.info(f"Creating a new MLflow experiment: {config.experiment_name}")
+            experiment_id = mlflow.create_experiment(config.experiment_name)
         else:
             experiment_id = experiment.experiment_id
 
@@ -34,7 +42,7 @@ def setup_mlflow(config):
         raise RuntimeError(f"MLflow experiment setup failed: {e}") from e
 
 
-def train(config, experiment_id):
+def train(config, experiment_id, device, data_yaml):
     """
     Runs the YOLO training loop with MLflow monitoring.
     """
@@ -51,7 +59,7 @@ def train(config, experiment_id):
                 {
                     "epochs": config.epochs,
                     "batch_size": config.batch_size,
-                    "device": DEVICE,
+                    "device": str(device),
                 }
             )
 
@@ -60,7 +68,7 @@ def train(config, experiment_id):
                 data=data_yaml,
                 epochs=config.epochs,
                 batch=config.batch_size,
-                device=DEVICE,
+                device=device,
             )
 
             # Extract training metrics
@@ -78,9 +86,6 @@ def train(config, experiment_id):
                 }
             )
 
-            # Save the trained model weights in MLflow under "model" directory
-            mlflow.log_artifact(config.model_path, artifact_path="model")
-
     except Exception as e:
         logger.error(f"Training failed: {e}")
         if run_started:
@@ -89,6 +94,14 @@ def train(config, experiment_id):
     finally:
         if run_started:
             mlflow.end_run()
+
+
+def save_model():
+
+    # Log the actual model file in MLflow
+    mlflow.log_artifact(config.model_path, artifact_path="trained_models")
+
+    print(f"Fine-tuned model saved and logged from: {config.model_path}")
 
 
 if __name__ == "__main__":
@@ -109,7 +122,7 @@ if __name__ == "__main__":
         else "cpu"
     )
     yolo_model.to(DEVICE)
-    config.model = yolo_model  # ✅ Assign model to config
+    config.model = yolo_model
 
     # Assign path to data.yaml
     data_yaml = os.getenv("DATA_YAML_PATH")
@@ -118,6 +131,12 @@ if __name__ == "__main__":
     experiment_id = setup_mlflow(config)
 
     # Start training
-    train(config, experiment_id)
+    train(config, experiment_id, DEVICE, data_yaml)
+
+    # Save model after training
+    save_model()
 
     logger.info("Training complete!")
+
+    # Ensure logs are properly written before script exits
+    logging.shutdown()

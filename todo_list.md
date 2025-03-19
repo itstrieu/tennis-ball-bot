@@ -36,7 +36,7 @@
 - [x] Prepared training script with MLflow
 - [x] Ran test training as a sanity check and reviewed results on MLflow
 - [x] Collected and annotated realistic, varied videos for the dataset
-- [ ] Update training script to handle a larger dataset
+- [x] Update training script to handle a larger dataset
 - [ ] Run training for multiple epochs and evaluate model performance
 - [ ] Compare results with initial test training and refine hyperparameters
 
@@ -50,7 +50,7 @@
 - [ ] Ensure model is **compatible with edge deployment constraints**  
 
 ### 8. Reorganize the Scripts to Be More Modular (Without ChatGPT)
-- [ ] Split training script into separate modules (data processing, model training, evaluation, logging)
+- [x] Split training script into separate modules
 - [ ] Refactor FastAPI endpoints for better structure and maintainability
 - [ ] Ensure all scripts work independently but integrate seamlessly
 - [ ] Document key functions and scripts for easier debugging

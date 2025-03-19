@@ -21,12 +21,13 @@ class TrainingConfig:
         # Load configuration file
         self.config = self.load_config(self.config_path)
 
-        # Model Paths (Directory from .env, Model file from config.yaml)
-        model_dir = os.getenv("MODEL_PATH", "")  # Path from .env
-        model_file = self.config["model"]["file"]  # File from config.yaml
-        self.model_path = os.path.join(model_dir, model_file)  # Full path
+        # Model Paths
+        model_dir = os.getenv("MODEL_PATH", "")  # Directory from .env
+        model_file = self.config["model"]["file"]  # Filename from config.yaml
+        self.model_path = os.path.join(model_dir, model_file)  # Full path to model
 
-        # Training Parameters (Only from config.yaml)
+        # Training Parameters (Use config.yaml)
+        self.model = None
         self.data_yaml = os.path.abspath(self.config["training"]["data_yaml"])
         self.epochs = self.config["training"]["max_epochs"]
         self.batch_size = self.config["training"]["batch_size"]
@@ -38,6 +39,9 @@ class TrainingConfig:
             if ":" in tracking_path
             else tracking_path
         )
+
+        # Experiment Name from .env
+        self.experiment_name = os.getenv("EXPERIMENT_NAME", "default-experiment")
 
     @staticmethod
     def load_config(config_path):
@@ -55,4 +59,5 @@ if __name__ == "__main__":
     print(f"Config Path: {config.config_path}")
     print(f"Model Path: {config.model_path}")
     print(f"Training for {config.epochs} epochs with batch size {config.batch_size}.")
+    print(f"Experiment Name: {config.experiment_name}")
     print(f"Tracking URI: {config.tracking_uri}")
