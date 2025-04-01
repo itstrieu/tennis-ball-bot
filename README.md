@@ -16,21 +16,6 @@ Tennis Ball Bot is a vision-powered robotic system designed to autonomously dete
 - **Real-Time Performance Monitoring** – **Prometheus & Grafana** track inference latency, FPS, and system performance.  
 - **Automated Model Retraining** – **MLflow-powered CI/CD pipeline** to continuously improve detection performance.  
 
-## **Project Structure**
-```
-📦 tennis-ball-bot
-├── 📂 data # Collected and annotated datasets
-├── 📂 models # Trained YOLO models and HEF conversions
-├── 📂 scripts # Training, inference, sensor integration, and motor control
-├── 📂 hardware # Hardware setup instructions, wiring, and motor control logic
-├── 📂 monitoring # Prometheus/Grafana monitoring setup
-├── 📂 ci_cd # GitHub Actions for automated testing and deployment
-├── 📜 project_notebook.ipynb
-├── 📜 README.md # Project documentation
-├── 📜 requirements.txt # Dependencies and environment setup
-└── 📜 LICENSE # Project licensing information
-```
-
 ## **Data Collection & Model Training**
 - **Custom Dataset Annotation** – Video footage collected across different environments (indoor, outdoor, varied lighting conditions).  
 - **Annotation Tool** – **CVAT** for 2D bounding box labeling.  
