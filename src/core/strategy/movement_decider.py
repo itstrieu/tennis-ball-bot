@@ -54,23 +54,22 @@ class MovementDecider:
         if distance_action == "stop":
             return "stop"
     
-        # Step 1: Override  always go forward if very close and mostly centered
-        # if area > 10000 and abs(offset) < 400:
-        #    print("[DEBUG] Close override: pushing forward")
-        #    return "forward"
-    
-        # Step 2: Encourage forward if ball is far (area small) and not wildly off-center
-        if area < 3000 and abs(offset) < 200:
+        # inside decide_direction:
+        if area > 8000 and abs(offset) < 500:
+            print("[DEBUG] Close override: pushing forward")
+            return "forward"
+
+        if area < 2500 and abs(offset) < 250:
             print("[DEBUG] Far-ball nudge: pushing forward despite offset")
             return "forward"
-    
-        # Step 3: Use dynamic threshold fallback
+
+        # Use dynamic threshold fallback
         dynamic_threshold = min(100, 10 + (area ** 0.5) * 0.8)
         print(f"[DEBUG] Dynamic center threshold: {dynamic_threshold:.2f}")
     
         if abs(offset) <= dynamic_threshold:
             return "forward"
-        elif offset < 0:
-            return "left"
+        elif offset < 0:            
+	    return "left"
         else:
             return "right"
