@@ -1,0 +1,56 @@
+# Ignore all files in the data folder
+data/
+private_drafts/
+
+# Ignore compiled model weights and checkpoints
+*.h5
+*.tflite
+*.onnx
+*.pb
+*.hef  # HAiLO Executable Format
+
+# Ignore video and image datasets
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.tiff
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Ignore annotation exports and raw data
+*.csv
+*.json
+*.xml
+*.yaml
+*.zip
+*.tar.gz
+
+# Ignore logs and cache files
+logs/
+*.log
+cache/
+*.npy
+*.npz
+*.pyc
+
+# Ignore virtual environment
+pi-yolo/
+private_drafts/
+mlruns/
+runs/
+download_model.py
+BACKUP/
+.env
+dist.py
+error_analysis_main.py
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
