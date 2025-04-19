@@ -3,7 +3,6 @@ import os
 import logging
 from utils.logger import Logger
 from picamera2 import Picamera2
-from src.streaming.visualizer import Visualizer
 from src.config.motion import (
     SEARCH_ROTATE_SPEED,
     SEARCH_ROTATE_DURATION,
@@ -40,26 +39,6 @@ class RobotController:
         robot_logger = Logger(name="robot", log_level=logging.INFO)
         self.logger = robot_logger.get_logger()
 
-        # initialize camera
-        self.camera = self._init_camera()
-
-    def _init_camera(self):
-        """
-        Configure and start the Picamera2 preview camera.
-
-        Returns:
-            cam (Picamera2): started camera instance
-        """
-        cam = Picamera2()
-        cam.configure(
-            cam.create_preview_configuration(
-                main={"format": "BGR888", "size": (640, 480)}
-            )
-        )
-        cam.start()
-        self.logger.info("Camera initialized (640x480, BGR888)")
-        return cam
-
     def run(self):
         """
         Main control loop:
@@ -80,11 +59,6 @@ class RobotController:
             while True:
                 frame = self.camera.capture_array()
                 bboxes = self.vision.detect_ball(frame)
-
-                # show live feed with bounding boxes; exit loop if user presses 'q'
-                if not Visualizer.show_frame(frame, bboxes):
-                    self.logger.info("Visualizer requested exit.")
-                    break
 
                 if not bboxes:
                     self.logger.info("❌ No tennis balls detected.")
@@ -114,7 +88,6 @@ class RobotController:
         finally:
             self.motion.stop()
             self.camera.stop()
-            Visualizer.cleanup()
             self.logger.info("RobotController shutdown complete.")
 
     def _move(self, direction):
