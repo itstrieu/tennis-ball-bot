@@ -13,7 +13,7 @@ def get_camera():
     if _camera is None:
         _camera = Picamera2()
         _camera.configure(
-            _camera.create_preview_configuration(
+            _camera.create_video_configuration(
                 main={"format": "BGR888", "size": (640, 480)}
             )
         )
