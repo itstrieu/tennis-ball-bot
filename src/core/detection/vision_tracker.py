@@ -1,6 +1,7 @@
 from .yolo_inference import YOLOInference
 from src.config import vision as vision_config
 from picamera2 import Picamera2
+from src.app.camera_manager import get_camera
 
 
 class VisionTracker:
@@ -10,14 +11,8 @@ class VisionTracker:
         self.camera_offset = camera_offset
         self.conf_threshold = vision_config.CONFIDENCE_THRESHOLD
 
-        # Re-add this if removed
-        self.camera = Picamera2()
-        self.camera.configure(
-            self.camera.create_preview_configuration(
-                main={"format": "BGR888", "size": (640, 480)}
-            )
-        )
-        self.camera.start()
+        # get camera
+        self.camera = get_camera()
 
     def get_frame(self):
         return self.camera.capture_array()

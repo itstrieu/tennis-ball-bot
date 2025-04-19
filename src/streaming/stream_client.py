@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from picamera2 import Picamera2
 from src.core.detection.vision_tracker import VisionTracker
 from src.config.vision import MODEL_PATH, FRAME_WIDTH
+from src.app.camera_manager import get_camera
 
 app = FastAPI()
 
@@ -13,8 +14,9 @@ latest_frame = None
 lock = threading.Lock()
 vision = VisionTracker(model_path=MODEL_PATH, frame_width=FRAME_WIDTH)
 
-# Initialize camera
-camera = vision.camera
+# Get camera
+camera = get_camera()
+
 
 # Background capture + detection
 
