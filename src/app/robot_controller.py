@@ -57,7 +57,7 @@ class RobotController:
             self.motion.stop()
 
             while True:
-                frame = self.camera.capture_array()
+                frame = self.vision.get_frame()
                 bboxes = self.vision.detect_ball(frame)
 
                 if not bboxes:
@@ -87,7 +87,6 @@ class RobotController:
             self.logger.info("KeyboardInterrupt received: stopping robot...")
         finally:
             self.motion.stop()
-            self.camera.stop()
             self.logger.info("RobotController shutdown complete.")
 
     def _move(self, direction):
