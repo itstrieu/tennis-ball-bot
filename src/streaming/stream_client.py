@@ -1,80 +1,60 @@
-import time
 import cv2
+import logging
 import threading
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
+from picamera2 import Picamera2
 from src.core.detection.vision_tracker import VisionTracker
 from src.config.vision import MODEL_PATH, FRAME_WIDTH
+from src.app.camera_manager import get_camera
 
 app = FastAPI()
 
 # Globals
 latest_frame = None
 lock = threading.Lock()
-camera = None
-vision = None
-stream_thread_started = False
+
+# Initialize camera (ensure this happens once and passed through)
+camera = get_camera()
+
+# Initialize Vision Tracker with camera access
+vision = VisionTracker(model_path=MODEL_PATH, frame_width=FRAME_WIDTH, camera=camera)
 
 
-def set_camera(cam):
+def capture_frame():
     """
-    Injects the shared Picamera2 instance into this module
-    and initializes the VisionTracker with it.
-
-    Args:
-        cam (Picamera2): initialized camera instance from main app
+    Capture a single frame from the camera and process it.
     """
-    global camera, vision, stream_thread_started
-    camera = cam
-    vision = VisionTracker(
-        model_path=MODEL_PATH, frame_width=FRAME_WIDTH, camera=camera
-    )
-
-    if not stream_thread_started:
-        thread = threading.Thread(target=capture_loop, daemon=True)
-        thread.start()
-        stream_thread_started = True
-
-
-def capture_loop():
-    global latest_frame
-    while camera is None:
-        time.sleep(0.1)  # wait until the camera is properly initialized
-
-    while True:
-        frame = camera.capture_array()  # Capture a frame from the camera
-        if frame is None:
-            continue  # Skip if frame capture fails
-
-        print("[DEBUG] Frame captured")  # Add this for debugging
-
-        bboxes = vision.detect_ball(frame)
-        print(
-            f"[DEBUG] Detected {len(bboxes)} tennis balls"
-        )  # Debug bounding box count
-
+    try:
+        frame = camera.capture_array()  # Capture frame
+        bboxes = vision.detect_ball(frame)  # Detect balls in the frame
         for x, y, w, h in bboxes:
             x1, y1 = int(x), int(y)
             x2, y2 = int(x + w), int(y + h)
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        return frame
+    except Exception as e:
+        logging.error(f"Error capturing frame: {e}")
+        return None
 
-        with lock:
-            latest_frame = frame  # Store latest frame for streaming
 
-
+# MJPEG stream generator
 def gen():
+    """
+    Generate MJPEG frames for streaming.
+    """
     while True:
-        with lock:
-            if latest_frame is None:
-                continue
-            ret, buffer = cv2.imencode(".jpg", latest_frame)
-            if not ret:
-                continue
-            frame_bytes = buffer.tobytes()
+        frame = capture_frame()  # Capture a new frame
+        if frame is None:
+            logging.warning("No frame captured, skipping...")
+            continue
 
-        print(
-            f"[DEBUG] MJPEG frame generated: {len(frame_bytes)} bytes"
-        )  # Debug stream size
+        ret, buffer = cv2.imencode(".jpg", frame)  # Encode frame as JPEG
+        if not ret:
+            logging.warning("Failed to encode frame.")
+            continue
+
+        frame_bytes = buffer.tobytes()  # Convert to bytes for streaming
         yield (
             b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
         )
@@ -95,7 +75,7 @@ html_page = """
 @app.get("/", response_class=HTMLResponse)
 def index():
     """
-    Home route serving a simple HTML page with the stream.
+    Simple route to serve HTML for the live stream.
     """
     return html_page
 
@@ -104,6 +84,7 @@ def index():
 def stream():
     """
     MJPEG stream route for embedding in a browser or client.
+    This route continuously serves the latest frames as a MJPEG stream.
     """
     return StreamingResponse(
         gen(), media_type="multipart/x-mixed-replace; boundary=frame"
