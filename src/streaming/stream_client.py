@@ -37,36 +37,32 @@ def set_camera(cam):
 
 
 def capture_loop():
-    """
-    Continuously captures frames and draws detection boxes.
-    Shared across the MJPEG stream server.
-    """
     global latest_frame
-
-    if camera is None or vision is None:
-        print("[ERROR] Camera or Vision not initialized in stream_client.")
-        return
+    while camera is None:
+        time.sleep(0.1)  # wait until the camera is properly initialized
 
     while True:
-        try:
-            frame = camera.capture_array()
-            bboxes = vision.detect_ball(frame)
-            for x, y, w, h in bboxes:
-                x1, y1 = int(x), int(y)
-                x2, y2 = int(x + w), int(y + h)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            with lock:
-                latest_frame = frame
-        except Exception as e:
-            print(f"[ERROR] Streaming loop failed: {e}")
-            time.sleep(1)
+        frame = camera.capture_array()  # Capture a frame from the camera
+        if frame is None:
+            continue  # Skip if frame capture fails
+
+        print("[DEBUG] Frame captured")  # Add this for debugging
+
+        bboxes = vision.detect_ball(frame)
+        print(
+            f"[DEBUG] Detected {len(bboxes)} tennis balls"
+        )  # Debug bounding box count
+
+        for x, y, w, h in bboxes:
+            x1, y1 = int(x), int(y)
+            x2, y2 = int(x + w), int(y + h)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        with lock:
+            latest_frame = frame  # Store latest frame for streaming
 
 
 def gen():
-    """
-    MJPEG frame generator for StreamingResponse.
-    Encodes latest frame as JPEG.
-    """
     while True:
         with lock:
             if latest_frame is None:
@@ -75,6 +71,10 @@ def gen():
             if not ret:
                 continue
             frame_bytes = buffer.tobytes()
+
+        print(
+            f"[DEBUG] MJPEG frame generated: {len(frame_bytes)} bytes"
+        )  # Debug stream size
         yield (
             b"--frame\r\n" b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
         )
