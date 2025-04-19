@@ -22,10 +22,6 @@ class RobotController:
         self.vision = vision_tracker
         self.decider = movement_decider
 
-        # Get the shared camera instance
-        self.camera = get_camera()  # Get the shared camera instance
-        self.vision.set_camera(self.camera)  # Pass the camera instance to VisionTracker
-
         # Set up logger
         robot_logger = Logger(name="robot", log_level=logging.INFO)
         self.logger = robot_logger.get_logger()
