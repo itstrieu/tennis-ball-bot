@@ -11,6 +11,9 @@ from src.config.motion import (
     NO_BALL_PAUSE,
     SWITCH_DELAY,
 )
+import signal
+
+signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
 class RobotController:
@@ -79,9 +82,9 @@ class RobotController:
                 bboxes = self.vision.detect_ball(frame)
 
                 # show live feed with bounding boxes; exit loop if user presses 'q'
-                if os.environ.get("DISPLAY"):
-                    if not Visualizer.show_frame(frame, bboxes):
-                        break
+                if not Visualizer.show_frame(frame, bboxes):
+                    self.logger.info("Visualizer requested exit.")
+                    break
 
                 if not bboxes:
                     self.logger.info("❌ No tennis balls detected.")
