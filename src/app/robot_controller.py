@@ -1,8 +1,7 @@
 import time
-import os
 import logging
+import signal
 from utils.logger import Logger
-from picamera2 import Picamera2
 from src.config.motion import (
     SEARCH_ROTATE_SPEED,
     SEARCH_ROTATE_DURATION,
@@ -10,24 +9,28 @@ from src.config.motion import (
     NO_BALL_PAUSE,
     SWITCH_DELAY,
 )
-from src.app.camera_manager import get_camera, stop_camera
-import signal
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
 
 
 class RobotController:
-    ...
+    """
+    RobotController ties together motion, vision, and decision modules,
+    looping on camera input and driving the robot accordingly.
+    """
 
     def __init__(self, motion_controller, vision_tracker, movement_decider):
+        """
+        Initialize controllers, decider, and logger.
+
+        Arguments:
+        - motion_controller: instance of MotionController
+        - vision_tracker: object with detect_ball(frame) and calculate_area(bbox)
+        - movement_decider: object with decide(offset, area)
+        """
         self.motion = motion_controller
         self.vision = vision_tracker
         self.decider = movement_decider
-        self.camera = get_camera()
-
-        # set up logger
-        robot_logger = Logger(name="robot", log_level=logging.INFO)
-        self.logger = robot_logger.get_logger()
 
         # set up logger
         robot_logger = Logger(name="robot", log_level=logging.INFO)
@@ -38,15 +41,12 @@ class RobotController:
         Main control loop:
         - capture frame
         - detect tennis balls
-        - overlay & display live inference
         - decide movement
         - execute movement
 
-        Press 'q' in window or Ctrl+C to exit.
+        Press Ctrl+C to exit.
         """
-        self.logger.info(
-            "RobotController started. Press 'q' in window or Ctrl+C to stop."
-        )
+        self.logger.info("RobotController started. Press Ctrl+C to stop.")
         try:
             self.motion.stop()
 
@@ -81,7 +81,6 @@ class RobotController:
             self.logger.info("KeyboardInterrupt received: stopping robot...")
         finally:
             self.motion.stop()
-            stop_camera()
             self.logger.info("RobotController shutdown complete.")
 
     def _move(self, direction):

@@ -1,25 +1,35 @@
 from .yolo_inference import YOLOInference
 from src.config import vision as vision_config
-from picamera2 import Picamera2
-from src.app.camera_manager import get_camera
 
 
 class VisionTracker:
+    """
+    Handles object detection using a YOLO model and calculates position and size of the target object.
+    """
+
     def __init__(self, model_path, frame_width, camera_offset=0):
+        """
+        Initialize the YOLO model and tracking parameters.
+
+        Args:
+            model_path (str): Path to the trained YOLO model (.pt file).
+            frame_width (int): Width of the camera frame (used to calculate offset from center).
+            camera_offset (int, optional): Pixel offset for the physical placement of the camera on the robot. Defaults to 0.
+        """
         self.model = YOLOInference(model_path)
         self.frame_width = frame_width
         self.camera_offset = camera_offset
         self.conf_threshold = vision_config.CONFIDENCE_THRESHOLD
 
-        # get camera
-        self.camera = get_camera()
-
-    def get_frame(self):
-        return self.camera.capture_array()
-
     def detect_ball(self, frame):
         """
-        Run YOLO model, filter for 'tennis ball', return all detected tennis balls' bounding boxes.
+        Run YOLO object detection and filter predictions to return only tennis balls.
+
+        Args:
+            frame (ndarray): BGR image captured from the camera.
+
+        Returns:
+            list: Bounding boxes of detected tennis balls in (x, y, w, h) format.
         """
         predictions = self.model.predict(frame)
 
@@ -33,24 +43,30 @@ class VisionTracker:
         print(f"[DEBUG] Raw predictions: {len(predictions)}")
         print(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
 
-        # If no tennis balls are detected, return an empty list
-        if not tennis_balls:
-            return []
-
-        # Return the list of bounding boxes for tennis balls
         return [bbox for (bbox, conf, label) in tennis_balls]
 
     def calculate_area(self, bbox):
         """
-        Calculates the area of the bounding box.
+        Calculate the area of a bounding box.
+
+        Args:
+            bbox (tuple): Bounding box in (x, y, w, h) format.
+
+        Returns:
+            float: Area of the bounding box.
         """
         x, y, w, h = bbox
         return w * h
 
     def get_center_offset(self, bbox):
         """
-        Returns how far the object is from the robot's centerline (in pixels).
-        Positive → object is to the right of center, negative → left.
+        Calculate horizontal offset of the object from the frame's center.
+
+        Args:
+            bbox (tuple): Bounding box in (x, y, w, h) format.
+
+        Returns:
+            float: Horizontal offset in pixels. Positive = right of center, Negative = left.
         """
         x, _, w, _ = bbox
         bbox_center_x = x + (w / 2)

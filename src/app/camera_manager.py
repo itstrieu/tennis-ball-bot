@@ -1,4 +1,3 @@
-# src/app/camera_manager.py
 from picamera2 import Picamera2
 
 _camera = None
@@ -18,7 +17,5 @@ def get_camera():
 
 
 def stop_camera():
-    global _camera
-    if _camera:
+    if _camera is not None:
         _camera.stop()
-        _camera = None
