@@ -18031,3 +18031,19 @@
 [2025-04-10 01:52:50,531] [INFO] Setting motor with pins: IN1=3, IN2=4, PWM=6, Direction=0, Duty=50
 [2025-04-10 01:52:50,531] [INFO] Setting motor with pins: IN1=22, IN2=27, PWM=5, Direction=0, Duty=50
 [2025-04-10 01:52:50,531] [INFO] Setting STBY to 0 (LOW) to disable motor driver.
+[2025-04-19 14:14:35,422] [INFO] Enabling fins at 85% duty
+[2025-04-19 14:16:25,705] [INFO] Enabling fins at 85% duty
+[2025-04-19 14:18:15,044] [INFO] Enabling fins at 85% duty
+[2025-04-19 14:18:15,395] [INFO] Stopping all motors
+[2025-04-19 14:18:15,395] [INFO] Setting motor IN1=21, IN2=26, PWM=13, Dir=0, Duty=0
+[2025-04-19 14:18:15,395] [INFO] Setting motor IN1=16, IN2=20, PWM=12, Dir=0, Duty=0
+[2025-04-19 14:18:15,395] [INFO] Setting motor IN1=3, IN2=4, PWM=6, Dir=0, Duty=0
+[2025-04-19 14:18:15,395] [INFO] Setting motor IN1=22, IN2=27, PWM=5, Dir=0, Duty=0
+[2025-04-19 14:18:15,395] [INFO] Disabling motor driver (STBY LOW)
+[2025-04-19 14:25:50,778] [INFO] Enabling fins at 85% duty
+[2025-04-19 14:25:51,155] [INFO] Stopping all motors
+[2025-04-19 14:25:51,155] [INFO] Setting motor IN1=21, IN2=26, PWM=13, Dir=0, Duty=0
+[2025-04-19 14:25:51,155] [INFO] Setting motor IN1=16, IN2=20, PWM=12, Dir=0, Duty=0
+[2025-04-19 14:25:51,155] [INFO] Setting motor IN1=3, IN2=4, PWM=6, Dir=0, Duty=0
+[2025-04-19 14:25:51,156] [INFO] Setting motor IN1=22, IN2=27, PWM=5, Dir=0, Duty=0
+[2025-04-19 14:25:51,156] [INFO] Disabling motor driver (STBY LOW)

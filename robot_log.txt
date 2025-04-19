@@ -1,0 +1,4 @@
+[2025-04-19 14:18:15,395] [INFO] Camera initialized (640x480, BGR888)
+[2025-04-19 14:18:15,395] [INFO] RobotController started. Press 'q' in window or Ctrl+C to stop.
+[2025-04-19 14:25:51,154] [INFO] Camera initialized (640x480, BGR888)
+[2025-04-19 14:25:51,155] [INFO] RobotController started. Press 'q' in window or Ctrl+C to stop.
