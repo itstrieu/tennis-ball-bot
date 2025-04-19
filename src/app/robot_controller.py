@@ -12,7 +12,11 @@ class RobotController:
 
     def _init_camera(self):
         cam = Picamera2()
-        cam.configure(cam.create_preview_configuration(main={"format": "BGR888", "size": (640, 480)}))
+        cam.configure(
+            cam.create_preview_configuration(
+                main={"format": "BGR888", "size": (640, 480)}
+            )
+        )
         cam.start()
         return cam
 
@@ -32,14 +36,18 @@ class RobotController:
                 if not bboxes:
                     print("❌ No tennis balls detected.")
                     self.motion.stop()
-                    time.sleep(.5)
-                    self.motion.rotate_left(speed=int(speed*.65))
+                    time.sleep(0.5)
+                    self.motion.rotate_left(speed=int(speed * 0.65))
                     time.sleep(1)
                     self.motion.stop()  # Stop the robot when no ball is detected
                     continue  # Skip the rest of the loop and wait for ball detection again
 
                 # Sort the detected balls by area (largest area first)
-                bboxes_sorted = sorted(bboxes, key=lambda bbox: self.vision.calculate_area(bbox), reverse=True)
+                bboxes_sorted = sorted(
+                    bboxes,
+                    key=lambda bbox: self.vision.calculate_area(bbox),
+                    reverse=True,
+                )
 
                 # Pick the largest tennis ball (closest)
                 largest_bbox = bboxes_sorted[0]
@@ -48,7 +56,9 @@ class RobotController:
 
                 # Decide on the movement based on the largest ball
                 direction = self.decider.decide(offset, area)
-                print(f"[DEBUG] Offset: {offset:.2f}, Area: {area:.2f}, Direction: {direction}")
+                print(
+                    f"[DEBUG] Offset: {offset:.2f}, Area: {area:.2f}, Direction: {direction}"
+                )
                 self._move(direction)
 
         except KeyboardInterrupt:
@@ -63,15 +73,15 @@ class RobotController:
         Converts direction decisions into motor actions.
         """
         speed = demo_config.SPEED  # Get speed from the config file
-        
+
         # Stop briefly before switching directions
         self.motion.stop()
-        time.sleep(.05)  # try increasing this if needed
+        time.sleep(0.05)  # try increasing this if needed
 
         if direction == "left":
-            self.motion.rotate_left(speed=int(speed*.7))
+            self.motion.rotate_left(speed=int(speed * 0.7))
         elif direction == "right":
-            self.motion.rotate_right(speed=int(speed*.7))
+            self.motion.rotate_right(speed=int(speed * 0.7))
         elif direction == "forward":
             self.motion.move_forward(speed=speed)
         else:
