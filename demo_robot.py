@@ -5,8 +5,6 @@ from src.core.detection.vision_tracker import VisionTracker
 from src.core.strategy.movement_decider import MovementDecider
 from src.app.robot_controller import RobotController
 
-from src.config import vision as vision_config
-from src.config import demo as demo_config
 from src.config import motion as motion_config
 
 
@@ -14,9 +12,9 @@ def main():
     print("Starting Tennis Ball Bot Demo...")
 
     motion = MotionController()
-    
+
     # Turn on fins at the start of the demo
-    motion.fin_on(speed=motion_config.FIN_SPEED) 
+    motion.fin_on(speed=motion_config.FIN_SPEED)
 
     vision = VisionTracker(
         model_path=vision_config.MODEL_PATH,
@@ -31,7 +29,7 @@ def main():
 
     robot = RobotController(motion, vision, strategy)
     robot.run()
-    
+
     # Turn off fins when the demo finishes
     motion.fin_off()
 
