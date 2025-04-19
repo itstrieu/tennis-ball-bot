@@ -2,6 +2,7 @@ import time
 import logging
 from utils.logger import Logger
 from picamera2 import Picamera2
+from src.streaming.visualizer import Visualizer
 from src.config.motion import (
     SPEED,
     SEARCH_ROTATE_SPEED,
@@ -61,19 +62,25 @@ class RobotController:
         Main control loop:
         - capture frame
         - detect tennis balls
+        - overlay & display live inference
         - decide movement
         - execute movement
 
-        Press Ctrl+C to exit.
+        Press 'q' in window or Ctrl+C to exit.
         """
-        self.logger.info("RobotController started. Press Ctrl+C to stop.")
+        self.logger.info(
+            "RobotController started. Press 'q' in window or Ctrl+C to stop."
+        )
         try:
-            # ensure stopped at start
             self.motion.stop()
 
             while True:
                 frame = self.camera.capture_array()
                 bboxes = self.vision.detect_ball(frame)
+
+                # show live feed with bounding boxes; exit loop if user presses 'q'
+                if not Visualizer.show_frame(frame, bboxes):
+                    break
 
                 if not bboxes:
                     self.logger.info("❌ No tennis balls detected.")
@@ -103,6 +110,7 @@ class RobotController:
         finally:
             self.motion.stop()
             self.camera.stop()
+            Visualizer.cleanup()
             self.logger.info("RobotController shutdown complete.")
 
     def _move(self, direction):
