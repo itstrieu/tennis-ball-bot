@@ -1,10 +1,10 @@
 import time
+import os
 import logging
 from utils.logger import Logger
 from picamera2 import Picamera2
 from src.streaming.visualizer import Visualizer
 from src.config.motion import (
-    SPEED,
     SEARCH_ROTATE_SPEED,
     SEARCH_ROTATE_DURATION,
     CENTER_ROTATE_SPEED,
@@ -79,8 +79,9 @@ class RobotController:
                 bboxes = self.vision.detect_ball(frame)
 
                 # show live feed with bounding boxes; exit loop if user presses 'q'
-                if not Visualizer.show_frame(frame, bboxes):
-                    break
+                if os.environ.get("DISPLAY"):
+                    if not Visualizer.show_frame(frame, bboxes):
+                        break
 
                 if not bboxes:
                     self.logger.info("❌ No tennis balls detected.")

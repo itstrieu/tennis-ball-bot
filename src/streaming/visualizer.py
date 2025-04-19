@@ -33,7 +33,7 @@ class Visualizer:
 
     @staticmethod
     def cleanup():
-        """
-        Destroy the display window.
-        """
-        cv2.destroyWindow(Visualizer.WINDOW_NAME)
+        import os
+
+        if os.environ.get("DISPLAY"):
+            cv2.destroyWindow(Visualizer.WINDOW_NAME)
