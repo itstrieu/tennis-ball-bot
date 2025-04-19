@@ -2,13 +2,14 @@ import time
 import logging
 import lgpio
 from utils.logger import Logger
-from config.pins import FRONT_LEFT, FRONT_RIGHT, REAR_LEFT, REAR_RIGHT, FINS, STBY
+from config.pins import FRONT_LEFT, FRONT_RIGHT, FINS, STBY
 from config.motion import FIN_PWM_FREQ, PWM_FREQ, SPEED, FIN_SPEED
 
 
 class MotionController:
     """
     MotionController manages wheel and fin motors via GPIO and PWM.
+    Back wheels are passive omnidirectional and are not driven.
     """
 
     def __init__(self):
@@ -37,20 +38,18 @@ class MotionController:
         # open GPIO chip
         self.chip = lgpio.gpiochip_open(0)
 
-        # wheel motor pin groups
+        # front wheel motor pin groups
         self.motors = {
             "FL": FRONT_LEFT,  # front left
             "FR": FRONT_RIGHT,  # front right
-            "RL": REAR_LEFT,  # rear left
-            "RR": REAR_RIGHT,  # rear right
         }
 
-        # movement direction patterns
+        # movement direction patterns for front wheels only
         self.patterns = {
-            "forward": {"FL": 1, "FR": -1, "RL": 1, "RR": -1},
-            "backward": {"FL": -1, "FR": 1, "RL": -1, "RR": 1},
-            "rotate_right": {"FL": 1, "FR": 1, "RL": -1, "RR": -1},
-            "rotate_left": {"FL": -1, "FR": -1, "RL": 1, "RR": 1},
+            "forward": {"FL": 1, "FR": -1},
+            "backward": {"FL": -1, "FR": 1},
+            "rotate_right": {"FL": 1, "FR": 1},
+            "rotate_left": {"FL": -1, "FR": -1},
         }
 
         # claim all GPIO output pins
@@ -90,7 +89,7 @@ class MotionController:
         """
         Claim all motor and fin pins as outputs, and the standby pin.
         """
-        # wheels
+        # claim front wheel pins
         for grp in self.motors.values():
             for pin in grp.values():
                 lgpio.gpio_claim_output(self.chip, pin)
@@ -134,9 +133,9 @@ class MotionController:
 
     def _move_by_pattern(self, pattern, speed=None):
         """
-        Drive each wheel according to the pattern.
+        Drive each front wheel according to the pattern.
 
-        pattern: dict of motor IDs to multipliers (e.g. 1, -1, 0.5)
+        pattern: dict of motor IDs to multipliers (e.g. 1, -1)
         speed:   base duty cycle (0–100). If None, uses self.speed.
         """
         base = speed if speed is not None else self.speed
