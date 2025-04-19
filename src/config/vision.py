@@ -11,6 +11,3 @@ FRAME_WIDTH = 640
 
 # Offset if the camera is not perfectly centered
 CAMERA_OFFSET = 0
-
-# When to stop approaching the ball (in bbox area)
-TARGET_AREA = 17000

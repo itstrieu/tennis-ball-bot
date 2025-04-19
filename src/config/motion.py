@@ -20,3 +20,6 @@ SEARCH_ROTATE_DURATION = 3
 
 SWITCH_DELAY = 0.5
 NO_BALL_PAUSE = 0.5
+
+# When to stop approaching the ball (in bbox area)
+TARGET_AREA = 17000
