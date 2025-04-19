@@ -1,12 +1,11 @@
+# src/streaming/stream_client.py
 import cv2
-import logging
 import threading
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
-from picamera2 import Picamera2
+from src.app.camera_manager import get_camera
 from src.core.detection.vision_tracker import VisionTracker
 from src.config.vision import MODEL_PATH, FRAME_WIDTH
-from src.app.camera_manager import get_camera
 
 app = FastAPI()
 
@@ -14,7 +13,7 @@ app = FastAPI()
 latest_frame = None
 lock = threading.Lock()
 
-# Initialize camera once and share it across components
+# Initialize camera (will be shared)
 camera = get_camera()
 
 # Initialize Vision Tracker with camera access

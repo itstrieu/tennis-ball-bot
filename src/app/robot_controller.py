@@ -1,6 +1,6 @@
-import time
-import logging
+# src/app/robot_controller.py
 from utils.logger import Logger
+import time
 from src.config.motion import (
     SEARCH_ROTATE_SPEED,
     SEARCH_ROTATE_DURATION,
@@ -8,7 +8,7 @@ from src.config.motion import (
     NO_BALL_PAUSE,
     SWITCH_DELAY,
 )
-from src.app.camera_manager import get_camera  # Import get_camera function
+from src.app.camera_manager import get_camera
 
 
 class RobotController:
@@ -18,23 +18,15 @@ class RobotController:
     """
 
     def __init__(self, motion_controller, vision_tracker, movement_decider):
-        """
-        Initialize controllers, decider, and logger.
-
-        Arguments:
-        - motion_controller: instance of MotionController
-        - vision_tracker: object with detect_ball(frame) and calculate_area(bbox)
-        - movement_decider: object with decide(offset, area)
-        """
         self.motion = motion_controller
         self.vision = vision_tracker
         self.decider = movement_decider
 
-        # Initialize camera and pass it to VisionTracker
-        self.camera = get_camera()  # Use the camera from the manager
-        self.vision.set_camera(self.camera)  # Set camera for vision tracker
+        # Get the shared camera instance
+        self.camera = get_camera()  # Get the shared camera instance
+        self.vision.set_camera(self.camera)  # Pass the camera instance to VisionTracker
 
-        # set up logger
+        # Set up logger
         robot_logger = Logger(name="robot", log_level=logging.INFO)
         self.logger = robot_logger.get_logger()
 
@@ -53,7 +45,7 @@ class RobotController:
             self.motion.stop()
 
             while True:
-                frame = self.vision.get_frame()  # Get frame from the camera
+                frame = self.vision.get_frame()  # Get the frame from the shared camera
                 bboxes = self.vision.detect_ball(frame)
 
                 if not bboxes:
@@ -68,7 +60,6 @@ class RobotController:
                     )
                     continue
 
-                # choose the largest (closest) ball
                 largest = max(bboxes, key=self.vision.calculate_area)
                 offset = self.vision.get_center_offset(largest)
                 area = self.vision.calculate_area(largest)
@@ -88,11 +79,7 @@ class RobotController:
     def _move(self, direction):
         """
         Translate a direction string into a motion_controller call.
-
-        Arguments:
-        - direction (str): one of 'left', 'right', 'forward', or others to stop
         """
-        # brief pause to avoid mixing commands
         self.motion.stop()
         time.sleep(SWITCH_DELAY)
 

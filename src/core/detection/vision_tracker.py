@@ -1,23 +1,29 @@
+# src/core/detection/vision_tracker.py
 from .yolo_inference import YOLOInference
 from src.config import vision as vision_config
 
 
 class VisionTracker:
-    def __init__(self, model_path, frame_width, camera=None, camera_offset=0):
+    def __init__(self, model_path, frame_width, camera, camera_offset=0):
+        """
+        Initialize vision tracker with model, camera, and parameters.
+
+        Arguments:
+        - model_path: path to the YOLO model
+        - frame_width: width of the frame for the camera
+        - camera: the shared camera instance
+        - camera_offset: offset of the camera's center, default 0
+        """
         self.model = YOLOInference(model_path)
         self.frame_width = frame_width
         self.camera_offset = camera_offset
         self.conf_threshold = vision_config.CONFIDENCE_THRESHOLD
 
-        # Use the camera passed into the constructor (default is None)
-        self.camera = camera
-
-    def set_camera(self, camera):
-        self.camera = camera  # Set the camera if it is passed after initialization
+        self.camera = camera  # Use the shared camera instance
 
     def get_frame(self):
         """
-        Capture a frame from the camera.
+        Capture a frame from the shared camera.
         """
         return self.camera.capture_array()
 
@@ -43,3 +49,20 @@ class VisionTracker:
 
         # Return the list of bounding boxes for tennis balls
         return [bbox for (bbox, conf, label) in tennis_balls]
+
+    def calculate_area(self, bbox):
+        """
+        Calculates the area of the bounding box.
+        """
+        x, y, w, h = bbox
+        return w * h
+
+    def get_center_offset(self, bbox):
+        """
+        Returns how far the object is from the robot's centerline (in pixels).
+        Positive → object is to the right of center, negative → left.
+        """
+        x, _, w, _ = bbox
+        bbox_center_x = x + (w / 2)
+        adjusted_center = bbox_center_x - self.camera_offset
+        return adjusted_center - (self.frame_width / 2)
