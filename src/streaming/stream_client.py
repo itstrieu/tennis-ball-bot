@@ -14,11 +14,7 @@ lock = threading.Lock()
 vision = VisionTracker(model_path=MODEL_PATH, frame_width=FRAME_WIDTH)
 
 # Initialize camera
-camera = Picamera2()
-camera.configure(
-    camera.create_preview_configuration(main={"format": "BGR888", "size": (640, 480)})
-)
-camera.start()
+camera = vision.camera
 
 # Background capture + detection
 
