@@ -1,16 +1,51 @@
 import time
+import logging
+from utils.logger import Logger
 from picamera2 import Picamera2
-from src.config import demo as demo_config  # Import the config
+from src.config.motion import (
+    SPEED,
+    SEARCH_ROTATE_SPEED,
+    SEARCH_ROTATE_DURATION,
+    CENTER_ROTATE_SPEED,
+    NO_BALL_PAUSE,
+    SWITCH_DELAY,
+)
 
 
 class RobotController:
+    """
+    RobotController ties together motion, vision, and decision modules,
+    looping on camera input and driving the robot accordingly.
+    """
+
     def __init__(self, motion_controller, vision_tracker, movement_decider):
+        """
+        Initialize controllers, decider, camera, and logger.
+
+        Arguments:
+        - motion_controller: instance of MotionController
+        - vision_tracker: object with detect_ball(frame) and calculate_area(bbox)
+        - movement_decider: object with decide(offset, area)
+        """
+        # dependencies
         self.motion = motion_controller
         self.vision = vision_tracker
         self.decider = movement_decider
+
+        # set up logger
+        robot_logger = Logger(name="robot", log_level=logging.INFO)
+        self.logger = robot_logger.get_logger()
+
+        # initialize camera
         self.camera = self._init_camera()
 
     def _init_camera(self):
+        """
+        Configure and start the Picamera2 preview camera.
+
+        Returns:
+            cam (Picamera2): started camera instance
+        """
         cam = Picamera2()
         cam.configure(
             cam.create_preview_configuration(
@@ -18,71 +53,78 @@ class RobotController:
             )
         )
         cam.start()
+        self.logger.info("Camera initialized (640x480, BGR888)")
         return cam
 
     def run(self):
-        speed = demo_config.SPEED
-        print("RobotController started. Press Ctrl+C to stop.")
+        """
+        Main control loop:
+        - capture frame
+        - detect tennis balls
+        - decide movement
+        - execute movement
+
+        Press Ctrl+C to exit.
+        """
+        self.logger.info("RobotController started. Press Ctrl+C to stop.")
         try:
-            last_direction = None  # Track the last movement direction
-            self.motion.stop()  # Ensure motors are stopped initially
+            # ensure stopped at start
+            self.motion.stop()
 
             while True:
                 frame = self.camera.capture_array()
-
-                # Get all detected tennis balls in the current frame
                 bboxes = self.vision.detect_ball(frame)
 
                 if not bboxes:
-                    print("❌ No tennis balls detected.")
+                    self.logger.info("❌ No tennis balls detected.")
                     self.motion.stop()
-                    time.sleep(0.5)
-                    self.motion.rotate_left(speed=int(speed * 0.65))
-                    time.sleep(1)
-                    self.motion.stop()  # Stop the robot when no ball is detected
-                    continue  # Skip the rest of the loop and wait for ball detection again
+                    time.sleep(NO_BALL_PAUSE)
+                    self.logger.info(
+                        f"Searching: rotate left @ {SEARCH_ROTATE_SPEED}% for {SEARCH_ROTATE_DURATION}s"
+                    )
+                    self.motion.rotate_left(
+                        speed=SEARCH_ROTATE_SPEED, duration=SEARCH_ROTATE_DURATION
+                    )
+                    continue
 
-                # Sort the detected balls by area (largest area first)
-                bboxes_sorted = sorted(
-                    bboxes,
-                    key=lambda bbox: self.vision.calculate_area(bbox),
-                    reverse=True,
-                )
-
-                # Pick the largest tennis ball (closest)
-                largest_bbox = bboxes_sorted[0]
-                offset = self.vision.get_center_offset(largest_bbox)
-                area = self.vision.calculate_area(largest_bbox)
-
-                # Decide on the movement based on the largest ball
+                # choose the largest (closest) ball
+                largest = max(bboxes, key=self.vision.calculate_area)
+                offset = self.vision.get_center_offset(largest)
+                area = self.vision.calculate_area(largest)
                 direction = self.decider.decide(offset, area)
-                print(
-                    f"[DEBUG] Offset: {offset:.2f}, Area: {area:.2f}, Direction: {direction}"
+
+                self.logger.debug(
+                    f"Offset: {offset:.2f}, Area: {area:.2f}, Direction: {direction}"
                 )
                 self._move(direction)
 
         except KeyboardInterrupt:
-            print("Stopping robot...")
-
+            self.logger.info("KeyboardInterrupt received: stopping robot...")
         finally:
             self.motion.stop()
             self.camera.stop()
+            self.logger.info("RobotController shutdown complete.")
 
     def _move(self, direction):
         """
-        Converts direction decisions into motor actions.
-        """
-        speed = demo_config.SPEED  # Get speed from the config file
+        Translate a direction string into a motion_controller call.
 
-        # Stop briefly before switching directions
+        Arguments:
+        - direction (str): one of 'left', 'right', 'forward', or others to stop
+        """
+        # brief pause to avoid mixing commands
         self.motion.stop()
-        time.sleep(0.05)  # try increasing this if needed
+        time.sleep(SWITCH_DELAY)
 
         if direction == "left":
-            self.motion.rotate_left(speed=int(speed * 0.7))
+            self.logger.info(f"Rotating left @ {CENTER_ROTATE_SPEED}%")
+            self.motion.rotate_left(speed=CENTER_ROTATE_SPEED)
         elif direction == "right":
-            self.motion.rotate_right(speed=int(speed * 0.7))
+            self.logger.info(f"Rotating right @ {CENTER_ROTATE_SPEED}%")
+            self.motion.rotate_right(speed=CENTER_ROTATE_SPEED)
         elif direction == "forward":
-            self.motion.move_forward(speed=speed)
+            self.logger.info("Moving forward @ default speed")
+            self.motion.move_forward()
         else:
+            self.logger.info("Stopping: unknown direction")
             self.motion.stop()

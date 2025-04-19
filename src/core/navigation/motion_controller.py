@@ -169,26 +169,6 @@ class MotionController:
             time.sleep(duration)
             self.stop()
 
-    def strafe_left(self, speed=None, duration=None):
-        """
-        Strafe left at given speed (or default). Optionally for a duration.
-        """
-        self.logger.info(f"Strafing left @ {speed or self.speed}%")
-        self._move_by_pattern(self.patterns["strafe_left"], speed)
-        if duration:
-            time.sleep(duration)
-            self.stop()
-
-    def strafe_right(self, speed=None, duration=None):
-        """
-        Strafe right at given speed (or default). Optionally for a duration.
-        """
-        self.logger.info(f"Strafing right @ {speed or self.speed}%")
-        self._move_by_pattern(self.patterns["strafe_right"], speed)
-        if duration:
-            time.sleep(duration)
-            self.stop()
-
     def rotate_left(self, speed=None, duration=None):
         """
         Rotate counter-clockwise at given speed (or default). Optionally for a duration.
@@ -219,20 +199,6 @@ class MotionController:
         self.logger.info("Disabling motor driver (STBY LOW)")
         lgpio.gpio_write(self.chip, self.stby, 0)
         time.sleep(0.1)
-
-    def move(self, direction, speed=None, duration=None):
-        """
-        General move by direction string ('forward', 'rotate_left', etc.).
-        """
-        pattern = self.patterns.get(direction)
-        if not pattern:
-            self.logger.warning(f"Invalid direction: {direction}")
-            return
-        self.logger.info(f"Moving {direction} @ {speed or self.speed}%")
-        self._move_by_pattern(pattern, speed)
-        if duration:
-            time.sleep(duration)
-            self.stop()
 
     def cleanup(self):
         """
