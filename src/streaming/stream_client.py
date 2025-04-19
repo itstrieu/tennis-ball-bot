@@ -13,6 +13,7 @@ latest_frame = None
 lock = threading.Lock()
 camera = None
 vision = None
+stream_thread_started = False
 
 
 def set_camera(cam):
@@ -23,11 +24,16 @@ def set_camera(cam):
     Args:
         cam (Picamera2): initialized camera instance from main app
     """
-    global camera, vision
+    global camera, vision, stream_thread_started
     camera = cam
     vision = VisionTracker(
         model_path=MODEL_PATH, frame_width=FRAME_WIDTH, camera=camera
     )
+
+    if not stream_thread_started:
+        thread = threading.Thread(target=capture_loop, daemon=True)
+        thread.start()
+        stream_thread_started = True
 
 
 def capture_loop():
@@ -36,22 +42,24 @@ def capture_loop():
     Shared across the MJPEG stream server.
     """
     global latest_frame
-    while camera is None or vision is None:
-        time.sleep(0.1)  # wait for injection
+
+    if camera is None or vision is None:
+        print("[ERROR] Camera or Vision not initialized in stream_client.")
+        return
 
     while True:
-        frame = camera.capture_array()
-        bboxes = vision.detect_ball(frame)
-        for x, y, w, h in bboxes:
-            x1, y1 = int(x), int(y)
-            x2, y2 = int(x + w), int(y + h)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        with lock:
-            latest_frame = frame
-
-
-# Start in background
-threading.Thread(target=capture_loop, daemon=True).start()
+        try:
+            frame = camera.capture_array()
+            bboxes = vision.detect_ball(frame)
+            for x, y, w, h in bboxes:
+                x1, y1 = int(x), int(y)
+                x2, y2 = int(x + w), int(y + h)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            with lock:
+                latest_frame = frame
+        except Exception as e:
+            print(f"[ERROR] Streaming loop failed: {e}")
+            time.sleep(1)
 
 
 def gen():
