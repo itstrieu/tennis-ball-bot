@@ -1,8 +1,10 @@
-import logging
-from fastapi import FastAPI, StreamingResponse, HTMLResponse
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, StreamingResponse
 import cv2
 import threading
-from src.app.camera_manager import get_camera  # Ensure get_camera is imported
+import logging
+
+from src.app.camera_manager import get_camera
 from src.core.detection.vision_tracker import VisionTracker
 from src.config.vision import MODEL_PATH, FRAME_WIDTH
 
