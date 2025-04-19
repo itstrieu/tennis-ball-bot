@@ -1,28 +1,44 @@
+import time
 import cv2
 import threading
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
-from picamera2 import Picamera2
 from src.core.detection.vision_tracker import VisionTracker
 from src.config.vision import MODEL_PATH, FRAME_WIDTH
-from src.app.camera_manager import get_camera
 
 app = FastAPI()
 
 # Globals
 latest_frame = None
 lock = threading.Lock()
-vision = VisionTracker(model_path=MODEL_PATH, frame_width=FRAME_WIDTH)
-
-# Get camera
-camera = get_camera()
+camera = None
+vision = None
 
 
-# Background capture + detection
+def set_camera(cam):
+    """
+    Injects the shared Picamera2 instance into this module
+    and initializes the VisionTracker with it.
+
+    Args:
+        cam (Picamera2): initialized camera instance from main app
+    """
+    global camera, vision
+    camera = cam
+    vision = VisionTracker(
+        model_path=MODEL_PATH, frame_width=FRAME_WIDTH, camera=camera
+    )
 
 
 def capture_loop():
+    """
+    Continuously captures frames and draws detection boxes.
+    Shared across the MJPEG stream server.
+    """
     global latest_frame
+    while camera is None or vision is None:
+        time.sleep(0.1)  # wait for injection
+
     while True:
         frame = camera.capture_array()
         bboxes = vision.detect_ball(frame)
@@ -38,8 +54,11 @@ def capture_loop():
 threading.Thread(target=capture_loop, daemon=True).start()
 
 
-# MJPEG stream generator
 def gen():
+    """
+    MJPEG frame generator for StreamingResponse.
+    Encodes latest frame as JPEG.
+    """
     while True:
         with lock:
             if latest_frame is None:
@@ -67,11 +86,17 @@ html_page = """
 
 @app.get("/", response_class=HTMLResponse)
 def index():
+    """
+    Home route serving a simple HTML page with the stream.
+    """
     return html_page
 
 
 @app.get("/stream")
 def stream():
+    """
+    MJPEG stream route for embedding in a browser or client.
+    """
     return StreamingResponse(
         gen(), media_type="multipart/x-mixed-replace; boundary=frame"
     )
