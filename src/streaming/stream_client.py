@@ -1,4 +1,4 @@
-# src/streaming/stream_client.py
+import logging
 from fastapi import FastAPI, StreamingResponse, HTMLResponse
 import cv2
 import threading
