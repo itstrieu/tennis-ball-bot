@@ -2,14 +2,14 @@ import time
 import logging
 import lgpio
 from utils.logger import Logger
-from config.pins import FRONT_LEFT, FRONT_RIGHT, FINS, STBY
+from config.pins import FRONT_LEFT, FRONT_RIGHT, REAR_LEFT, REAR_RIGHT, FINS, STBY
 from config.motion import FIN_PWM_FREQ, PWM_FREQ, SPEED, FIN_SPEED
 
 
 class MotionController:
     """
     MotionController manages wheel and fin motors via GPIO and PWM.
-    Back wheels are passive omnidirectional and are not driven.
+    Front wheels are standard; rear wheels have omnidirectional rollers but are still driven.
     """
 
     def __init__(self):
@@ -38,18 +38,21 @@ class MotionController:
         # open GPIO chip
         self.chip = lgpio.gpiochip_open(0)
 
-        # front wheel motor pin groups
+        # wheel motor pin groups, including omnidirectional rear wheels
         self.motors = {
             "FL": FRONT_LEFT,  # front left
             "FR": FRONT_RIGHT,  # front right
+            "RL": REAR_LEFT,  # rear left (omni)
+            "RR": REAR_RIGHT,  # rear right (omni)
         }
 
-        # movement direction patterns for front wheels only
+        # movement direction patterns for all wheels
+        # Omnidirectional rollers on rear wheels will allow lateral slip when turning
         self.patterns = {
-            "forward": {"FL": 1, "FR": -1},
-            "backward": {"FL": -1, "FR": 1},
-            "rotate_right": {"FL": 1, "FR": 1},
-            "rotate_left": {"FL": -1, "FR": -1},
+            "forward": {"FL": 1, "FR": -1, "RL": 1, "RR": -1},
+            "backward": {"FL": -1, "FR": 1, "RL": -1, "RR": 1},
+            "rotate_right": {"FL": 1, "FR": 1, "RL": -1, "RR": -1},
+            "rotate_left": {"FL": -1, "FR": -1, "RL": 1, "RR": 1},
         }
 
         # claim all GPIO output pins
@@ -89,13 +92,11 @@ class MotionController:
         """
         Claim all motor and fin pins as outputs, and the standby pin.
         """
-        # claim front wheel pins
+        # wheel and fin pins
         for grp in self.motors.values():
             for pin in grp.values():
                 lgpio.gpio_claim_output(self.chip, pin)
-        # standby
         lgpio.gpio_claim_output(self.chip, self.stby)
-        # fins
         lgpio.gpio_claim_output(self.chip, self.L_EN)
         lgpio.gpio_claim_output(self.chip, self.PWM_L)
         lgpio.gpio_claim_output(self.chip, self.PWM_R)
@@ -114,8 +115,7 @@ class MotionController:
             duty = self.speed
         duty = max(0, min(100, duty))
         self.logger.info(
-            f"Setting motor IN1={in1}, IN2={in2}, PWM={pwm}, "
-            f"Dir={direction}, Duty={duty}"
+            f"Setting motor IN1={in1}, IN2={in2}, PWM={pwm}, Dir={direction}, Duty={duty}"
         )
 
         if direction == 1:
@@ -133,7 +133,7 @@ class MotionController:
 
     def _move_by_pattern(self, pattern, speed=None):
         """
-        Drive each front wheel according to the pattern.
+        Drive each wheel according to the pattern.
 
         pattern: dict of motor IDs to multipliers (e.g. 1, -1)
         speed:   base duty cycle (0–100). If None, uses self.speed.
@@ -193,8 +193,10 @@ class MotionController:
         Stop all wheel motors and disable driver.
         """
         self.logger.info("Stopping all motors")
+        # stop each motor
         for pins in self.motors.values():
             self._set_motor(pins["IN1"], pins["IN2"], pins["PWM"], direction=0, duty=0)
+        # disable driver
         self.logger.info("Disabling motor driver (STBY LOW)")
         lgpio.gpio_write(self.chip, self.stby, 0)
         time.sleep(0.1)
