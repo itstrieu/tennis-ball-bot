@@ -12,7 +12,7 @@ trap cleanup SIGINT SIGTERM
 
 # Start camera stream in background with logging
 echo "[INFO] Starting camera stream at http://raspberrypi.local:8000"
-PYTHONPATH=src uvicorn src.streaming.camera_stream:app --host 0.0.0.0 --port 8000 > stream.log 2>&1 &
+PYTHONPATH=src uvicorn src.streaming.stream_client:app --host 0.0.0.0 --port 8000 > stream.log 2>&1 &
 STREAM_PID=$!
 
 # Wait a few seconds to let the stream boot
