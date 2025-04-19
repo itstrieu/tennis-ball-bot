@@ -14,7 +14,7 @@ app = FastAPI()
 latest_frame = None
 lock = threading.Lock()
 
-# Initialize camera (ensure this happens once and passed through)
+# Initialize camera once and share it across components
 camera = get_camera()
 
 # Initialize Vision Tracker with camera access

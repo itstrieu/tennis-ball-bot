@@ -1,6 +1,5 @@
 import time
 import logging
-import signal
 from utils.logger import Logger
 from src.config.motion import (
     SEARCH_ROTATE_SPEED,
@@ -9,8 +8,7 @@ from src.config.motion import (
     NO_BALL_PAUSE,
     SWITCH_DELAY,
 )
-
-signal.signal(signal.SIGINT, signal.default_int_handler)
+from src.app.camera_manager import get_camera  # Import get_camera function
 
 
 class RobotController:
@@ -32,6 +30,10 @@ class RobotController:
         self.vision = vision_tracker
         self.decider = movement_decider
 
+        # Initialize camera and pass it to VisionTracker
+        self.camera = get_camera()  # Use the camera from the manager
+        self.vision.set_camera(self.camera)  # Set camera for vision tracker
+
         # set up logger
         robot_logger = Logger(name="robot", log_level=logging.INFO)
         self.logger = robot_logger.get_logger()
@@ -51,7 +53,7 @@ class RobotController:
             self.motion.stop()
 
             while True:
-                frame = self.vision.get_frame()
+                frame = self.vision.get_frame()  # Get frame from the camera
                 bboxes = self.vision.detect_ball(frame)
 
                 if not bboxes:
