@@ -5,6 +5,7 @@ from src.core.detection.vision_tracker import VisionTracker
 from src.core.strategy.movement_decider import MovementDecider
 from src.app.robot_controller import RobotController
 
+from src.config import vision as vision_config
 from src.config import motion as motion_config
 
 
@@ -23,8 +24,8 @@ def main():
     )
 
     strategy = MovementDecider(
-        target_area=demo_config.TARGET_AREA,
-        center_threshold=demo_config.CENTER_THRESHOLD,
+        target_area=motion_config.TARGET_AREA,
+        center_threshold=motion_config.CENTER_THRESHOLD,
     )
 
     robot = RobotController(motion, vision, strategy)
