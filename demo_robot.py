@@ -1,5 +1,7 @@
 # demo_robot.py
 
+from picamera2 import Picamera2
+
 from src.core.navigation.motion_controller import MotionController
 from src.core.detection.vision_tracker import VisionTracker
 from src.core.strategy.movement_decider import MovementDecider
@@ -17,10 +19,20 @@ def main():
     # Turn on fins at the start of the demo
     motion.fin_on(speed=motion_config.FIN_SPEED)
 
+    # Shared camera instance
+    camera = Picamera2()
+    camera.configure(
+        camera.create_preview_configuration(
+            main={"format": "BGR888", "size": (640, 480)}
+        )
+    )
+    camera.start()
+
     vision = VisionTracker(
         model_path=vision_config.MODEL_PATH,
         frame_width=vision_config.FRAME_WIDTH,
         camera_offset=vision_config.CAMERA_OFFSET,
+        camera=camera,  # Pass camera explicitly
     )
 
     strategy = MovementDecider(
@@ -33,6 +45,7 @@ def main():
 
     # Turn off fins when the demo finishes
     motion.fin_off()
+    camera.stop()
 
 
 if __name__ == "__main__":

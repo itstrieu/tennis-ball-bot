@@ -3,23 +3,25 @@ from src.config import vision as vision_config
 
 
 class VisionTracker:
-    """
-    Handles object detection using a YOLO model and calculates position and size of the target object.
-    """
-
-    def __init__(self, model_path, frame_width, camera_offset=0):
+    def __init__(self, model_path, frame_width, camera, camera_offset=0):
         """
-        Initialize the YOLO model and tracking parameters.
+        Initializes the object detector and stores reference to the shared camera.
 
         Args:
-            model_path (str): Path to the trained YOLO model (.pt file).
-            frame_width (int): Width of the camera frame (used to calculate offset from center).
-            camera_offset (int, optional): Pixel offset for the physical placement of the camera on the robot. Defaults to 0.
+            model_path (str): Path to YOLO model
+            frame_width (int): Width of camera frame for calculating center offset
+            camera (Picamera2): Shared camera instance (from camera_manager)
+            camera_offset (int): Horizontal offset of camera relative to robot center
         """
         self.model = YOLOInference(model_path)
         self.frame_width = frame_width
         self.camera_offset = camera_offset
         self.conf_threshold = vision_config.CONFIDENCE_THRESHOLD
+        self.camera = camera
+
+    def get_frame(self):
+        """Capture a frame from the shared Picamera2 instance."""
+        return self.camera.capture_array()
 
     def detect_ball(self, frame):
         """
