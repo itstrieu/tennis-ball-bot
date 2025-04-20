@@ -35,7 +35,8 @@ class MovementDecider:
         Compute dynamic threshold based on object size.
         Scales with sqrt(area) and caps at center_threshold.
         """
-        dynamic = int((area**0.5) * 0.5)
+        dynamic = int((area ** 0.5) * 2)
+        min_threshold = self.center_threshold
         return min(self.center_threshold, dynamic)
 
     def decide(self, offset: float, area: float) -> str:
@@ -58,5 +59,11 @@ class MovementDecider:
         if abs(offset) <= threshold:
             return "forward"
 
-        # otherwise turn
+        if offset < 0:
+            self.rotate_left()
+            time.sleep(1)
+        else:
+            self.rotate_right()
+            time.sleep(1)
+
         return "left" if offset < 0 else "right"
