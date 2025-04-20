@@ -19,7 +19,10 @@ class MovementDecider:
 
     def decide(self, offset, area):
         self.last_area = area
-        self.no_ball_count = 0
+
+        if area > self.target_area * 0.2:
+            self.no_ball_count = 0
+
         self.approach_distance = min(100, int((area / self.target_area) * 100))
 
         self.logger.debug(
@@ -51,6 +54,7 @@ class MovementDecider:
             else:
                 self.logger.info("Ball slightly right and close — micro right.")
                 return "micro_right"
+
         else:
             if offset < 0:
                 self.logger.info("Ball left and farther — step left.")
