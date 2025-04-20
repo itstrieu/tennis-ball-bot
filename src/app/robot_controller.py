@@ -88,29 +88,28 @@ class RobotController:
             self.logger.info("RobotController shutdown complete.")
 
     def _search_for_balls(self):
-        """Search for tennis balls by turning left and nudging forward."""
-        self.logger.info(
-            "No balls found. Searching by turning left and nudging forward."
-        )
+        """Search for tennis balls: initially nudge forward, then rotate left more often."""
+        if self.search_cycles < 3:
+            # Initial blind nudges assuming ball just out of frame
+            self.logger.info(
+                f"Initial nudge forward (cycle {self.search_cycles + 1}/3)."
+            )
+            self.motion.move_forward(speed=int(SPEED * 0.6))
+            time.sleep(0.4)
+            self.motion.stop()
 
-        # Step 1: Partial left turn
-        spin_duration = 0.6  # Tune for ~90° turn
-        self.logger.info("Turning left to scan new area.")
-        self.motion.rotate_left(speed=SEARCH_ROTATE_SPEED)
-        time.sleep(spin_duration)
-        self.motion.stop()
+        else:
+            # Rotate left aggressively to scan for new balls
+            self.logger.info("Turning left to search wider area.")
+            self.motion.rotate_left(speed=SEARCH_ROTATE_SPEED)
+            time.sleep(0.6)  # ~90° turn
+            self.motion.stop()
+
         time.sleep(self.assess_pause_time)
 
-        # Step 2: Short forward nudge
-        self.logger.info("Nudging forward slightly.")
-        self.motion.move_forward(speed=int(SPEED * 0.6))
-        time.sleep(0.4)
-        self.motion.stop()
-        time.sleep(self.assess_pause_time)
-
-        # Optional: cycle tracking
+        # Track cycles to switch from forward to spin mode
         self.search_cycles += 1
-        if self.search_cycles >= 6:
+        if self.search_cycles >= 10:
             self.logger.info("Resetting search pattern.")
             self.search_cycles = 0
 
