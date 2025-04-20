@@ -89,7 +89,7 @@ class RobotController:
 
     def _search_for_balls(self):
         """Search for tennis balls: initially nudge forward, then rotate left more often."""
-        if self.search_cycles < 3:
+        if self.search_cycles < 2:
             # Initial blind nudges assuming ball just out of frame
             self.logger.info(
                 f"Initial nudge forward (cycle {self.search_cycles + 1}/3)."

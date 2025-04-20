@@ -76,4 +76,4 @@ class MovementDecider:
             return "search"
 
         self.logger.info("No ball seen — small forward.")
-        return "small_forward"
+        return "micro_forward"
