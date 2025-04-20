@@ -7,63 +7,77 @@ from config.motion import (
 
 
 class MovementDecider:
-    """
-    MovementDecider uses configurable thresholds to decide robot actions based on
-    object offset and area.
-    """
-
-    def __init__(
-        self,
-        target_area: float = TARGET_AREA,
-        center_threshold: int = CENTER_THRESHOLD,
-    ):
-        """
-        Initialize decider with parameters from config.motion
-
-        Args:
-            target_area (float): area at which object is considered "close enough"
-            center_threshold (int): pixel offset threshold for "centered"
-        """
+    def __init__(self, target_area=TARGET_AREA, center_threshold=CENTER_THRESHOLD):
         self.target_area = target_area
         self.center_threshold = center_threshold
+        self.last_direction = None
+        self.same_direction_count = 0
+        self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
 
-        decider_logger = Logger(name="decider", log_level=logging.DEBUG)
-        self.logger = decider_logger.get_logger()
+    def decide_direction(self, center_offset):
+        # Use the center threshold from config (800px based on your settings)
+        if abs(center_offset) > self.center_threshold:
+            if center_offset < 0:
+                return "left"
+            else:
+                return "right"
+        else:
+            return "center"
 
-    def _effective_threshold(self, area: float) -> int:
-        """
-        Compute dynamic threshold based on object size.
-        Scales with sqrt(area) and caps at center_threshold.
-        """
-        dynamic = int((area ** 0.5) * 2)
-        min_threshold = self.center_threshold
-        return min(self.center_threshold, dynamic)
-
-    def decide(self, offset: float, area: float) -> str:
-        """
-        Decide action based on object offset and area.
-
-        Returns:
-            'left', 'right', 'forward', or 'stop'
-        """
-        self.logger.debug(f"Offset: {offset:.2f}, Area: {area:.2f}")
-
-        # stop if object is close enough
+    def decide_distance_action(self, area):
         if area >= self.target_area:
             return "stop"
-
-        threshold = self._effective_threshold(area)
-        self.logger.debug(f"Effective threshold: {threshold}")
-
-        # forward if within threshold
-        if abs(offset) <= threshold:
-            return "forward"
-
-        if offset < 0:
-            self.rotate_left()
-            time.sleep(1)
         else:
-            self.rotate_right()
-            time.sleep(1)
+            return "move"
 
-        return "left" if offset < 0 else "right"
+    def decide(self, offset, area):
+        direction = self.decide_direction(offset)
+        distance_action = self.decide_distance_action(area)
+
+        self.logger.debug(
+            f"Offset: {offset}, Area: {area}, Direction: {direction}, Distance Action: {distance_action}"
+        )
+
+        # First check if we've reached the target
+        if distance_action == "stop":
+            self.last_direction = "stop"
+            self.same_direction_count = 0
+            return "stop"
+
+        # Check if we're continuing in the same direction
+        current_decision = None
+
+        # If we're well within center threshold (less than half), go forward
+        if abs(offset) < self.center_threshold / 2:
+            current_decision = "forward"
+        # If we're somewhat off-center but still within threshold, use gentle turning
+        elif abs(offset) <= self.center_threshold:
+            if offset < 0:
+                current_decision = "gentle_left"
+            else:
+                current_decision = "gentle_right"
+        # If we're way off center, use normal turning
+        else:
+            if offset < 0:
+                current_decision = "left"
+            else:
+                current_decision = "right"
+
+        # If we're continuing in the same direction, increment counter
+        if current_decision == self.last_direction:
+            self.same_direction_count += 1
+        else:
+            self.same_direction_count = 0
+
+        # Only switch directions if we've been going the same way for a while
+        # or if this is our first decision
+        if (
+            self.last_direction is None
+            or self.same_direction_count >= 2
+            or current_decision == "forward"
+        ):
+            self.last_direction = current_decision
+            return current_decision
+        else:
+            # Otherwise, keep the last direction to reduce jitter
+            return self.last_direction
