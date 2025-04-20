@@ -27,9 +27,9 @@ class RobotController:
         self.search_cycles = 0
 
         # Movement duration parameters - multiple step sizes
-        self.forward_step_time = 0.6  # Standard forward step time
-        self.small_forward_time = 0.4  # Smaller step when getting close
-        self.micro_forward_time = 0.2  # Micro step when very close
+        self.forward_step_time = 1  # Standard forward step time
+        self.small_forward_time = 0.8  # Smaller step when getting close
+        self.micro_forward_time = 0.7  # Micro step when very close
 
         self.turn_step_time = 0.3  # Standard turn time
         self.micro_turn_time = 0.1  # Micro turn when close to target
@@ -84,38 +84,38 @@ class RobotController:
             self.logger.info("RobotController shutdown complete.")
 
     def _search_for_balls(self):
-        """Search for tennis balls by rotating in steps"""
-        self.logger.info(f"No balls found. Searching: rotating {self.search_direction}")
+        """Search for tennis balls using partial rotation and short forward step."""
+        self.logger.info("No balls found. Performing hybrid spin + step search.")
 
-        # Switch search direction periodically for better coverage
-        self.search_cycles += 1
-        if self.search_cycles >= 3:
-            self.search_cycles = 0
-            # Toggle search direction
-            self.search_direction = (
-                "right" if self.search_direction == "left" else "left"
-            )
+        # Alternate direction every cycle
+        self.search_direction = "right" if self.search_direction == "left" else "left"
 
-            # Occasionally move forward when searching
-            if self.search_cycles % 6 == 0:  # Less frequent forward movements
-                self.logger.info("Moving forward to search new area")
-                self.motion.move_forward()
-                time.sleep(0.5)  # Move forward briefly
-                self.motion.stop()
-                time.sleep(self.assess_pause_time)  # Pause to assess
+        # Step 1: Partial spin (about 90° worth)
+        spin_duration = 0.6  # Tune based on your bot's speed for ~90° rotation
 
-        # Execute the rotation step
         if self.search_direction == "left":
+            self.logger.info("Turning left to scan new area.")
             self.motion.rotate_left(speed=SEARCH_ROTATE_SPEED)
-            time.sleep(SEARCH_ROTATE_DURATION)
-            self.motion.stop()
         else:
+            self.logger.info("Turning right to scan new area.")
             self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
-            time.sleep(SEARCH_ROTATE_DURATION)
-            self.motion.stop()
 
-        # Pause briefly to assess after each search movement
+        time.sleep(spin_duration)
+        self.motion.stop()
         time.sleep(self.assess_pause_time)
+
+        # Step 2: Short forward nudge
+        self.logger.info("Nudging forward slightly.")
+        self.motion.move_forward(speed=int(SPEED * 0.6))
+        time.sleep(0.4)
+        self.motion.stop()
+        time.sleep(self.assess_pause_time)
+
+        # Optional reset or logging for tracking
+        self.search_cycles += 1
+        if self.search_cycles >= 6:
+            self.logger.info("Resetting search pattern.")
+            self.search_cycles = 0
 
     def _execute_step(self, direction):
         """
