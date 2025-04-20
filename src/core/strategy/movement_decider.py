@@ -11,7 +11,7 @@ class MovementDecider:
         self.target_area = target_area
         self.center_threshold = center_threshold
         self.no_ball_count = 0
-        self.max_no_ball_count = 8
+        self.max_no_ball_count = 2
         self.approach_distance = 0
         self.last_area = 0
 
