@@ -27,9 +27,9 @@ class RobotController:
         self.search_cycles = 0
 
         # Movement duration parameters - multiple step sizes
-        self.forward_step_time = 0.4  # Standard forward step time
-        self.small_forward_time = 0.2  # Smaller step when getting close
-        self.micro_forward_time = 0.1  # Micro step when very close
+        self.forward_step_time = 0.6  # Standard forward step time
+        self.small_forward_time = 0.4  # Smaller step when getting close
+        self.micro_forward_time = 0.2  # Micro step when very close
 
         self.turn_step_time = 0.3  # Standard turn time
         self.micro_turn_time = 0.1  # Micro turn when close to target
@@ -100,7 +100,7 @@ class RobotController:
             if self.search_cycles % 6 == 0:  # Less frequent forward movements
                 self.logger.info("Moving forward to search new area")
                 self.motion.move_forward()
-                time.sleep(0.8)  # Move forward briefly
+                time.sleep(0.5)  # Move forward briefly
                 self.motion.stop()
                 time.sleep(self.assess_pause_time)  # Pause to assess
 

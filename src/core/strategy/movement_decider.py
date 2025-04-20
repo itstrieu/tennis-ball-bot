@@ -11,69 +11,59 @@ class MovementDecider:
         self.target_area = target_area
         self.center_threshold = center_threshold
         self.no_ball_count = 0
-        self.max_no_ball_count = 8  # How many cycles before starting search mode
-        self.approach_distance = 0  # Tracks approach to adjust step size
+        self.max_no_ball_count = 8
+        self.approach_distance = 0
 
-        # Set up logger
         self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
 
     def decide(self, offset, area):
-        """
-        Decision logic with cautious approach:
-        1. If ball is large enough, stop (collection successful)
-        2. If ball is centered enough, move forward with progressively smaller steps
-        3. Otherwise turn to center the ball
-        """
-        # Reset no ball counter when we see a ball
         self.no_ball_count = 0
-
-        # Track approach distance - as area increases, we're closer to the ball
-        # This helps determine how cautiously to approach
         self.approach_distance = min(100, int((area / self.target_area) * 100))
 
         self.logger.debug(
             f"Offset: {offset}, Area: {area}, Approach: {self.approach_distance}%"
         )
 
-        # Check if ball is close enough to collect
         if area >= self.target_area:
-            self.approach_distance = 0  # Reset approach tracking
-            return "stop"  # Ball collected, stop
+            self.logger.info("Ball is close enough — stopping.")
+            self.approach_distance = 0
+            return "stop"
 
-        # If we're getting close (over 70% of target area), use micro-steps
         if area > self.target_area * 0.7:
             if abs(offset) <= self.center_threshold:
-                return "micro_forward"  # Very small steps when close
+                self.logger.info("Ball is very close and centered — micro forward.")
+                return "micro_forward"
 
-        # If ball is reasonably centered, move forward with appropriate step size
         if abs(offset) <= self.center_threshold:
-            # If we're very close, use small steps
             if area > self.target_area * 0.5:
+                self.logger.info("Ball centered and close — small forward.")
                 return "small_forward"
             else:
-                return "step_forward"  # Normal steps when farther away
+                self.logger.info("Ball centered and farther — normal forward.")
+                return "step_forward"
 
-        # If we're close but need to turn, use smaller turns
         if area > self.target_area * 0.5:
             if offset < 0:
+                self.logger.info("Ball slightly left and close — micro left.")
                 return "micro_left"
             else:
+                self.logger.info("Ball slightly right and close — micro right.")
                 return "micro_right"
         else:
-            # Regular turning when farther away
             if offset < 0:
+                self.logger.info("Ball left and farther — step left.")
                 return "step_left"
             else:
+                self.logger.info("Ball right and farther — step right.")
                 return "step_right"
 
     def handle_no_ball(self):
-        """Called when no ball is detected"""
         self.no_ball_count += 1
 
-        # If we've gone several frames without seeing a ball, search
         if self.no_ball_count >= self.max_no_ball_count:
-            self.no_ball_count = 0  # Reset counter
+            self.logger.info("No ball seen for multiple frames — initiating search.")
+            self.no_ball_count = 0
             return "search"
 
-        # Otherwise just continue with last action
+        self.logger.debug(f"No ball detected — count: {self.no_ball_count}")
         return None
