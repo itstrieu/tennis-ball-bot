@@ -34,7 +34,7 @@ class RobotController:
         self.turn_step_time = 0.3  # Standard turn time
         self.micro_turn_time = 0.1  # Micro turn when close to target
 
-        self.assess_pause_time = 0.2  # Time to pause and assess after movement
+        self.assess_pause_time = 0.1  # Time to pause and assess after movement
         self.approach_speed = SPEED  # Default approach speed
 
         # Set up logger
@@ -84,22 +84,15 @@ class RobotController:
             self.logger.info("RobotController shutdown complete.")
 
     def _search_for_balls(self):
-        """Search for tennis balls using partial rotation and short forward step."""
-        self.logger.info("No balls found. Performing hybrid spin + step search.")
+        """Search for tennis balls by turning left and nudging forward."""
+        self.logger.info(
+            "No balls found. Searching by turning left and nudging forward."
+        )
 
-        # Alternate direction every cycle
-        self.search_direction = "right" if self.search_direction == "left" else "left"
-
-        # Step 1: Partial spin (about 90° worth)
-        spin_duration = 0.6  # Tune based on your bot's speed for ~90° rotation
-
-        if self.search_direction == "left":
-            self.logger.info("Turning left to scan new area.")
-            self.motion.rotate_left(speed=SEARCH_ROTATE_SPEED)
-        else:
-            self.logger.info("Turning right to scan new area.")
-            self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
-
+        # Step 1: Partial left turn
+        spin_duration = 0.6  # Tune for ~90° turn
+        self.logger.info("Turning left to scan new area.")
+        self.motion.rotate_left(speed=SEARCH_ROTATE_SPEED)
         time.sleep(spin_duration)
         self.motion.stop()
         time.sleep(self.assess_pause_time)
@@ -111,7 +104,7 @@ class RobotController:
         self.motion.stop()
         time.sleep(self.assess_pause_time)
 
-        # Optional reset or logging for tracking
+        # Optional: cycle tracking
         self.search_cycles += 1
         if self.search_cycles >= 6:
             self.logger.info("Resetting search pattern.")
@@ -171,8 +164,12 @@ class RobotController:
             self.motion.rotate_right(speed=micro_speed)
             time.sleep(self.micro_turn_time)
 
+        elif direction == "final_forward":
+            self.logger.info("Final forward push (ball likely out of view).")
+            self.motion.move_forward(speed=SPEED)
+            time.sleep(0.6)
+
         elif direction == "stop":
             self.logger.info("Stopping (target reached)")
             self.motion.stop()
-            # Add a longer pause when we reach a target (collected a ball)
-            time.sleep(1.0)  # Longer pause at collection
+            time.sleep(1.0)

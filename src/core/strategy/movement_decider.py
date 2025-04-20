@@ -13,10 +13,12 @@ class MovementDecider:
         self.no_ball_count = 0
         self.max_no_ball_count = 8
         self.approach_distance = 0
+        self.last_area = 0
 
         self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
 
     def decide(self, offset, area):
+        self.last_area = area
         self.no_ball_count = 0
         self.approach_distance = min(100, int((area / self.target_area) * 100))
 
@@ -59,6 +61,14 @@ class MovementDecider:
 
     def handle_no_ball(self):
         self.no_ball_count += 1
+
+        if self.last_area > self.target_area * 0.8:
+            self.logger.info(
+                "Ball likely close but below camera — committing to final forward."
+            )
+            self.last_area = 0  # Reset after using it
+            self.no_ball_count = 0
+            return "final_forward"
 
         if self.no_ball_count >= self.max_no_ball_count:
             self.logger.info("No ball seen for multiple frames — initiating search.")
