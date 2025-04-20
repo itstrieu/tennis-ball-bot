@@ -34,7 +34,7 @@ class RobotController:
         self.turn_step_time = 0.3  # Standard turn time
         self.micro_turn_time = 0.1  # Micro turn when close to target
 
-        self.assess_pause_time = 0.1  # Time to pause and assess after movement
+        self.assess_pause_time = 0  # Time to pause and assess after movement
         self.approach_speed = SPEED  # Default approach speed
 
         # Set up logger
@@ -55,11 +55,15 @@ class RobotController:
                 bboxes = self.vision.detect_ball(frame)
 
                 if not bboxes:
-                    # No balls detected, handle this case
                     action = self.decider.handle_no_ball()
 
                     if action == "search":
                         self._search_for_balls()
+                    elif action:
+                        self._execute_step(action)
+
+                    self.motion.stop()
+                    time.sleep(self.assess_pause_time)
                     continue
 
                 # Found at least one ball

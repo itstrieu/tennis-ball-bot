@@ -10,7 +10,7 @@ SPEED = 60
 SELF_TURN_THRESHOLD = 30
 
 # How far off-center (in pixels) is acceptable to go forward
-CENTER_THRESHOLD = 300
+CENTER_THRESHOLD = 100
 
 
 # Rotation Configuration

@@ -75,5 +75,5 @@ class MovementDecider:
             self.no_ball_count = 0
             return "search"
 
-        self.logger.debug(f"No ball detected — count: {self.no_ball_count}")
-        return None
+        self.logger.info("No ball seen — small forward.")
+        return "small_forward"
