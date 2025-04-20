@@ -23,6 +23,10 @@ class RobotController:
         self.vision = vision_tracker
         self.decider = movement_decider
         self.current_direction = None
+        self.last_scan_time = time.time()
+        self.scan_count = 0
+        self.forward_distance = 0.5  # Time to move forward in seconds
+        self.scan_angle = 45  # Degrees to rotate when scanning
 
         # Set up logger
         robot_logger = Logger(name="robot", log_level=logging.INFO)
@@ -44,6 +48,17 @@ class RobotController:
             no_ball_frames = 0
 
             while True:
+                # First check if we need to scan for new balls
+                if (
+                    self.decider.check_scan_needed()
+                    and self.current_direction != "scanning"
+                ):
+                    self.logger.info(
+                        "⚠️ No balls detected recently. Starting scan pattern."
+                    )
+                    self._perform_scan()
+                    continue
+
                 frame = self.vision.get_frame()  # Get the frame from the shared camera
                 bboxes = self.vision.detect_ball(frame)
 
@@ -54,17 +69,10 @@ class RobotController:
                         self.logger.info(
                             "❌ No tennis balls detected for multiple frames."
                         )
-                        if self.current_direction != "searching":
+                        if self.current_direction != "scanning":
                             self.motion.stop()
                             time.sleep(NO_BALL_PAUSE)
-                            self.logger.info(
-                                f"Searching: rotate left @ {SEARCH_ROTATE_SPEED}% for {SEARCH_ROTATE_DURATION}s"
-                            )
-                            self.motion.rotate_left(
-                                speed=SEARCH_ROTATE_SPEED,
-                                duration=SEARCH_ROTATE_DURATION,
-                            )
-                            self.current_direction = "searching"
+                            self._perform_scan()
                     continue
                 else:
                     no_ball_frames = 0  # Reset counter when we see a ball
@@ -78,16 +86,58 @@ class RobotController:
                     f"Offset: {offset:.2f}, Area: {area:.2f}, Direction: {new_direction}"
                 )
 
+                # Handle the scan direction specially
+                if new_direction == "scan":
+                    self._perform_scan()
+                    continue
+
                 # Only change direction if it's actually different
                 if new_direction != self.current_direction:
                     self._move(new_direction)
                     self.current_direction = new_direction
+
+                # For forward movement, take measured steps
+                if new_direction == "forward":
+                    # Stop after a short movement to reassess
+                    time.sleep(self.forward_distance)
+                    self.motion.stop()
+                    time.sleep(0.1)  # Brief pause to stabilize
+                    self.current_direction = None  # Force reevaluation
 
         except KeyboardInterrupt:
             self.logger.info("KeyboardInterrupt received: stopping robot...")
         finally:
             self.motion.stop()
             self.logger.info("RobotController shutdown complete.")
+
+    def _perform_scan(self):
+        """Perform a systematic scan for tennis balls"""
+        self.motion.stop()
+        self.current_direction = "scanning"
+
+        # Alternate scan directions for better coverage
+        self.scan_count += 1
+        if self.scan_count % 2 == 0:
+            self.logger.info(f"Scanning: rotating left @ {SEARCH_ROTATE_SPEED}%")
+            self.motion.rotate_left(
+                speed=SEARCH_ROTATE_SPEED, duration=SEARCH_ROTATE_DURATION
+            )
+        else:
+            self.logger.info(f"Scanning: rotating right @ {SEARCH_ROTATE_SPEED}%")
+            self.motion.rotate_right(
+                speed=SEARCH_ROTATE_SPEED, duration=SEARCH_ROTATE_DURATION
+            )
+
+        # After scanning, move forward a bit if we haven't found anything in multiple scans
+        if self.scan_count >= 3:
+            self.logger.info("Moving forward briefly to search new area")
+            self.motion.move_forward()
+            time.sleep(self.forward_distance * 2)  # Move forward longer when searching
+            self.motion.stop()
+            self.scan_count = 0  # Reset scan count
+
+        # Reset the direction to force reevaluation
+        self.current_direction = None
 
     def _move(self, direction):
         """
@@ -110,19 +160,20 @@ class RobotController:
             self.logger.info(f"Rotating left @ {CENTER_ROTATE_SPEED}%")
             self.motion.rotate_left(speed=CENTER_ROTATE_SPEED)
         elif direction == "gentle_left":
-            gentle_speed = CENTER_ROTATE_SPEED // 2
+            gentle_speed = int(CENTER_ROTATE_SPEED * 0.6)  # 60% of normal speed
             self.logger.info(f"Rotating left gently @ {gentle_speed}%")
             self.motion.rotate_left(speed=gentle_speed)
         elif direction == "right":
             self.logger.info(f"Rotating right @ {CENTER_ROTATE_SPEED}%")
             self.motion.rotate_right(speed=CENTER_ROTATE_SPEED)
         elif direction == "gentle_right":
-            gentle_speed = CENTER_ROTATE_SPEED // 2
+            gentle_speed = int(CENTER_ROTATE_SPEED * 0.6)  # 60% of normal speed
             self.logger.info(f"Rotating right gently @ {gentle_speed}%")
             self.motion.rotate_right(speed=gentle_speed)
         elif direction == "forward":
             self.logger.info("Moving forward @ default speed")
             self.motion.move_forward()
+            # The forward movement timing is handled in the main run loop
         elif direction == "stop":
             self.logger.info("Stopping robot")
             self.motion.stop()
