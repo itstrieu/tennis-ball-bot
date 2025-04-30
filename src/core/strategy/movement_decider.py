@@ -27,8 +27,11 @@ class MovementDecider:
         self.target_area = target_area
         self.center_threshold = center_threshold
         self.max_no_ball = max_no_ball
-        self.no_ball_count = 0
-        self.last_area = 0
+        self.no_ball_count = 0  # Tracks how many consecutive frames had no ball
+        self.last_area = 0  # Area of last seen ball
+        self.last_seen_valid = (
+            False  # True only if the ball was seen in the previous frame
+        )
 
         self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
 
@@ -43,62 +46,65 @@ class MovementDecider:
         Returns:
             str: One of the keys in MOVEMENT_STEPS (e.g., 'small_forward', 'micro_left', 'search').
         """
-        ratio = area / self.target_area
-        self.last_area = area
+        ratio = area / self.target_area if self.target_area > 0 else 0
 
-        # Ball detected this frame
+        # === Case 1: Ball is detected this frame ===
         if offset is not None:
             self.no_ball_count = 0
+            self.last_area = area
+            self.last_seen_valid = True  # Mark that we just saw the ball
 
-            # 1) Stop if ball is large enough
+            # 1. Stop if the ball is close enough
             if ratio >= THRESHOLDS["stop"]:
                 self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
                 return "stop"
 
-            # 2) If centered
+            # 2. If centered, move forward (how much depends on distance)
             if abs(offset) <= self.center_threshold:
                 if ratio >= THRESHOLDS["micro"]:
-                    # Ball is close and centered → fine-grained forward
                     self.logger.info(
-                        f"[DECIDE] micro_forward (close + centered, ratio={ratio:.2f}, offset={offset})"
+                        f"[DECIDE] micro_forward (centered + close, ratio={ratio:.2f}, offset={offset})"
                     )
                     return "micro_forward"
                 else:
-                    # Centered but far → gentle small step forward
                     self.logger.info(
                         f"[DECIDE] small_forward (centered, ratio={ratio:.2f}, offset={offset})"
                     )
                     return "small_forward"
 
-            # 3) If off-center
+            # 3. If off-center, rotate to center
             if abs(offset) > self.center_threshold:
                 if abs(offset) > self.center_threshold * 2:
-                    # Far off-center → larger correction
                     choice = "step_left" if offset < 0 else "step_right"
                 else:
-                    # Slightly off-center → micro correction
                     choice = "micro_left" if offset < 0 else "micro_right"
                 self.logger.info(
-                    f"[DECIDE] {choice} (off-center, offset={offset}, ratio={ratio:.2f})"
+                    f"[DECIDE] {choice} (off-center, offset={offset:.2f}, ratio={ratio:.2f})"
                 )
                 return choice
 
-        # No ball seen in this frame
+        # === Case 2: No ball detected this frame ===
         self.no_ball_count += 1
 
-        # 4) If ball was recently close enough → take a confident step forward
-        if ratio >= THRESHOLDS["recovery"]:
-            self.logger.info(f"[DECIDE] step_forward (last_ratio={ratio:.2f})")
-            self.no_ball_count = 0
+        # 4. If we just lost the ball, and it was close, take a single blind step forward
+        if (
+            self.last_seen_valid
+            and self.last_area / self.target_area >= THRESHOLDS["recovery"]
+        ):
+            self.logger.info(
+                f"[DECIDE] step_forward (blind follow-up, last_ratio={self.last_area / self.target_area:.2f})"
+            )
+            self.last_seen_valid = False  # Prevent repeating this action
             return "step_forward"
 
-        # 5) If we've gone too long without detection → start search
+        # 5. If we've gone too long without seeing the ball, enter search mode
         if self.no_ball_count >= self.max_no_ball:
             self.logger.info(f"[DECIDE] search (no_ball_count={self.no_ball_count})")
             self.no_ball_count = 0
+            self.last_seen_valid = False
             return "search"
 
-        # 6) Otherwise continue scanning
+        # 6. Otherwise, continue slow scanning/searching
         self.logger.info(
             f"[DECIDE] search (default, no_ball_count={self.no_ball_count})"
         )
