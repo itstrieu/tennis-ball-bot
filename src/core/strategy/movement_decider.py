@@ -102,4 +102,4 @@ class MovementDecider:
         self.logger.info(
             f"[DECIDE] search (default, no_ball_count={self.no_ball_count})"
         )
-        return "search"`
+        return "search"
