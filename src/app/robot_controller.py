@@ -14,6 +14,7 @@ from src.config.motion import (
     SPEED,
 )
 from src.app.camera_manager import get_camera
+from src.config.motion import MOVEMENT_STEPS, DEV_SLOWDOWN
 
 
 class RobotController:
@@ -33,194 +34,44 @@ class RobotController:
         dev_mode (bool): Whether development slowdown is active.
     """
 
-    def __init__(
-        self, motion_controller, vision_tracker, movement_decider, dev_mode=False
-    ):
-        self.motion = motion_controller
-        self.vision = vision_tracker
-        self.decider = movement_decider
-        self.current_direction = None
+    def __init__(self, motion, vision, decider, dev_mode=True):
+        self.motion = motion
+        self.vision = vision
+        self.decider = decider
+        self.dev_slowdown = DEV_SLOWDOWN if dev_mode else 1.0
 
-        # Movement duration parameters
-        self.forward_step_time = 1.0
-        self.small_forward_time = 0.8
-        self.micro_forward_time = 0.7
-        self.turn_step_time = 0.3
-        self.micro_turn_time = 0.1
-
-        self.assess_pause_time = 0.2
-        self.approach_speed = SPEED
-
-        # Dev mode slowdown factor
-        self.dev_mode = dev_mode
-        self.dev_slowdown = 2.0 if dev_mode else 1.0  # adjust globally here
-
-        self.last_area = 0  # For deciding post-ball-disappearance behavior
-
-        # Set up logger
-        robot_logger = Logger(name="robot", log_level=logging.INFO)
-        self.logger = robot_logger.get_logger()
+        self.logger = Logger(name="robot", log_level=logging.INFO).get_logger()
 
     def run(self):
-        """
-        Main control loop.
+        self.logger.info("Starting control loop (dev_mode=%s)", self.dev_mode)
+        last_area = 0
 
-        States:
-            - scanning: Rotates the robot to search for a ball.
-            - waiting_for_ball: Waits and reacts to ball detection.
-            - wait_then_restart: Waits briefly before restarting the scan cycle.
-
-        The loop continues until interrupted (e.g., Ctrl+C).
-        """
-        self.logger.info("RobotController started. Press Ctrl+C to stop.")
         try:
-            self.motion.stop()
-            state = "scanning"
-            rotate_steps = 0
-            max_rotate_steps = int(360 / 30)  # ~30° per step
-            no_detection_frames = 0
-
             while True:
-                if state == "scanning":
-                    if rotate_steps < max_rotate_steps:
-                        self.logger.info(
-                            f"[SCAN] Rotating right (step {rotate_steps + 1}/{max_rotate_steps})"
-                        )
-                        self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
-                        time.sleep(0.3 * self.dev_slowdown)
-                        self.motion.stop()
-                        rotate_steps += 1
-                    else:
-                        self.logger.info(
-                            "[SCAN] Full rotation complete. Switching to ball detection."
-                        )
-                        state = "waiting_for_ball"
+                frame = self.vision.get_frame()
+                bboxes = self.vision.detect_ball(frame)
 
-                elif state == "waiting_for_ball":
-                    frame = self.vision.get_frame()
-                    bboxes = self.vision.detect_ball(frame)
+                if bboxes:
+                    largest = max(bboxes, key=self.vision.calculate_area)
+                    offset = self.vision.get_center_offset(largest)
+                    area = self.vision.calculate_area(largest)
+                else:
+                    offset = None
+                    area = last_area
 
-                    if bboxes:
-                        no_detection_frames = 0
-                        largest = max(bboxes, key=self.vision.calculate_area)
-                        offset = self.vision.get_center_offset(largest)
-                        area = self.vision.calculate_area(largest)
+                # Decide & execute
+                action = self.decider.decide(offset, area)
+                params = MOVEMENT_STEPS[action]
 
-                        self.logger.info(
-                            f"[TRACK] Ball seen — Offset: {offset}, Area: {area}"
-                        )
-                        direction = self.decider.decide(offset, area)
-                        self._execute_step(direction)
+                self.logger.debug(f"[EXECUTE] {action} → {params}")
+                getattr(self.motion, params["method"])(speed=params["speed"])
+                time.sleep(params["time"] * self.dev_slowdown)
+                self.motion.stop()
 
-                        self.last_area = area
-                        self.motion.stop()
-                        time.sleep(self.assess_pause_time * self.dev_slowdown)
-
-                    else:
-                        no_detection_frames += 1
-                        self.logger.info(
-                            f"[DEBUG] No ball detected. Last seen area: {self.last_area}, Missed frames: {no_detection_frames}"
-                        )
-
-                        if self.last_area > 2500:  # hardcoded based on trial feedback
-                            self.logger.info(
-                                "[RECOVERY] Ball likely out of view — executing forward push."
-                            )
-                            self.motion.move_forward(speed=SPEED)
-                            time.sleep(2.0 * self.dev_slowdown)  # push longer
-                            self.motion.stop()
-                            self.last_area = 0
-                            no_detection_frames = 0
-                            state = "wait_then_restart"
-
-                        elif no_detection_frames >= 5:
-                            self.logger.info(
-                                "[RECOVERY] No ball for multiple frames — resetting last_area and scanning again."
-                            )
-                            self.last_area = 0
-                            no_detection_frames = 0
-                            rotate_steps = 0
-                            state = "scanning"
-
-                        else:
-                            self.logger.info("[WAIT] Still searching for ball...")
-                            time.sleep(0.3 * self.dev_slowdown)
-
-                elif state == "wait_then_restart":
-                    self.logger.info("[WAIT] Waiting 2 seconds before restarting scan.")
-                    time.sleep(2.0 * self.dev_slowdown)
-                    rotate_steps = 0
-                    state = "scanning"
+                last_area = area
 
         except KeyboardInterrupt:
-            self.logger.info("KeyboardInterrupt received: stopping robot...")
+            self.logger.info("Stopping robot (KeyboardInterrupt).")
         finally:
             self.motion.stop()
-            self.logger.info("RobotController shutdown complete.")
-
-    def _execute_step(self, direction):
-        """
-        Executes a discrete movement step based on the provided direction command.
-
-        Args:
-            direction (str): Movement decision returned by the MovementDecider.
-                             One of ['step_forward', 'small_forward', 'micro_forward',
-                             'step_left', 'micro_left', 'step_right', 'micro_right', 'stop'].
-        """
-        """
-        Executes a discrete movement step based on the provided direction command.
-        """
-        reduced_speed = int(SPEED * 0.7)
-        micro_speed = int(SPEED * 0.5)
-
-        if direction == "step_forward":
-            self.logger.info(f"Step forward for {self.forward_step_time}s @ {SPEED}%")
-            self.motion.move_forward(speed=SPEED)
-            time.sleep(self.forward_step_time)
-
-        elif direction == "small_forward":
-            self.logger.info(
-                f"Small step forward for {self.small_forward_time}s @ {reduced_speed}%"
-            )
-            self.motion.move_forward(speed=reduced_speed)
-            time.sleep(self.small_forward_time)
-
-        elif direction == "micro_forward":
-            self.logger.info(
-                f"Micro step forward for {self.micro_forward_time}s @ {micro_speed}%"
-            )
-            self.motion.move_forward(speed=micro_speed)
-            time.sleep(self.micro_forward_time)
-
-        elif direction == "step_left":
-            self.logger.info(
-                f"Step left for {self.turn_step_time}s @ {CENTER_ROTATE_SPEED}%"
-            )
-            self.motion.rotate_left(speed=CENTER_ROTATE_SPEED)
-            time.sleep(self.turn_step_time)
-
-        elif direction == "micro_left":
-            self.logger.info(
-                f"Micro step left for {self.micro_turn_time}s @ {micro_speed}%"
-            )
-            self.motion.rotate_left(speed=micro_speed)
-            time.sleep(self.micro_turn_time)
-
-        elif direction == "step_right":
-            self.logger.info(
-                f"Step right for {self.turn_step_time}s @ {CENTER_ROTATE_SPEED}%"
-            )
-            self.motion.rotate_right(speed=CENTER_ROTATE_SPEED)
-            time.sleep(self.turn_step_time)
-
-        elif direction == "micro_right":
-            self.logger.info(
-                f"Micro step right for {self.micro_turn_time}s @ {micro_speed}%"
-            )
-            self.motion.rotate_right(speed=micro_speed)
-            time.sleep(self.micro_turn_time)
-
-        elif direction == "stop":
-            self.logger.info("Stopping (target reached)")
-            self.motion.stop()
-            time.sleep(1.0)
+            self.logger.info("Control loop ended.")

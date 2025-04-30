@@ -12,18 +12,36 @@ FIN_SPEED = 85
 
 # Wheels
 PWM_FREQ = 10000
-SPEED = 60  # Default forward movement speed
 
-# Vision-to-motion logic thresholds
-SELF_TURN_THRESHOLD = 30  # Pixel offset to trigger turning
-CENTER_THRESHOLD = 25  # Max offset from center to be considered "centered"
+# Basic speeds & thresholds
+SPEED = 60
+CENTER_ROTATE_SPEED = 60
+SEARCH_ROTATE_SPEED = 70
 
-# Rotational behavior
-SEARCH_ROTATE_SPEED = 70  # Speed during scanning rotation
-CENTER_ROTATE_SPEED = 60  # Speed used when centering on target
-SEARCH_ROTATE_DURATION = 0.5  # Duration of each rotation step during scanning
-SWITCH_DELAY = 0.3  # Delay between switching directions
-NO_BALL_PAUSE = 0.3  # Delay after losing sight of a ball
+TARGET_AREA = 12000
+CENTER_THRESHOLD = 25
 
-# Ball detection
-TARGET_AREA = 12000  # Minimum area to stop approaching the ball
+# Movement parameters, one source of truth
+MOVEMENT_STEPS = {
+    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 1.0},
+    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.7), "time": 0.8},
+    "micro_forward": {"method": "move_forward", "speed": int(SPEED * 0.4), "time": 0.5},
+    "step_left": {"method": "rotate_left", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
+    "micro_left": {"method": "rotate_left", "speed": int(SPEED * 0.4), "time": 0.1},
+    "step_right": {"method": "rotate_right", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
+    "micro_right": {"method": "rotate_right", "speed": int(SPEED * 0.4), "time": 0.1},
+    "stop": {"method": "stop", "speed": 0, "time": 1.0},
+    "search": {"method": "rotate_right", "speed": SEARCH_ROTATE_SPEED, "time": 0.15},
+    "recovery_forward": {"method": "move_forward", "speed": SPEED, "time": 2.0},
+}
+
+# Ratios of TARGET_AREA to trigger decisions
+THRESHOLDS = {
+    "stop": 1.0,
+    "micro": 0.7,
+    "small": 0.5,
+    "recovery": 0.2,
+}
+
+# Dev‐only slowdown factor (optional)
+DEV_SLOWDOWN = 2.0
