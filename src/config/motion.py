@@ -14,7 +14,7 @@ FIN_SPEED = 85
 PWM_FREQ = 10000
 
 # Basic speeds & thresholds
-SPEED = 60
+SPEED = 50
 CENTER_ROTATE_SPEED = 40
 SEARCH_ROTATE_SPEED = 40
 INTER_STEP_PAUSE = 0.5  # seconds, tune as needed (higher = slower)
@@ -24,8 +24,8 @@ CENTER_THRESHOLD = 25
 
 # Movement parameters, one source of truth
 MOVEMENT_STEPS = {
-    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.8},
-    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.7},
+    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.7},
+    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.6},
     "micro_forward": {
         "method": "move_forward",
         "speed": int(SPEED * 0.6),
