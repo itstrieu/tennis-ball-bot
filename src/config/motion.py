@@ -52,7 +52,11 @@ MOVEMENT_STEPS = {
         "time": 0.1,
     },
     "stop": {"method": "stop", "speed": 0, "time": 1.0},
-    "search": {"method": "rotate_right", "speed": SEARCH_ROTATE_SPEED, "time": 0.15},
+    "search": {
+        "method": "rotate_right",
+        "speed": int(SEARCH_ROTATE_SPEED),
+        "time": 0.3,
+    },
 }
 
 # Ratios of TARGET_AREA to trigger decisions
