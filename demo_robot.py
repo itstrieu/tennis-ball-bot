@@ -1,27 +1,26 @@
-import logging
 from threading import Thread
 import uvicorn
+import logging
 
-from picamera2 import Picamera2
 from src.app.camera_manager import get_camera
 from src.app.robot_controller import RobotController
 from src.core.navigation.motion_controller import MotionController
 from src.core.detection.vision_tracker import VisionTracker
 from src.core.strategy.movement_decider import MovementDecider
+from src.streaming import stream_client
 from src.streaming.stream_client import app
 from src.config import vision as vision_config, motion as motion_config
 
 
 def start_stream():
-    # this will call get_camera() --- which returns the same Picamera2 instance
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 
 
 def main():
-    # initialize camera once
+    # Only ONE camera init
     camera = get_camera()
 
-    # set up robot
+    # Set up robot modules
     motion = MotionController()
     motion.fin_on(speed=motion_config.FIN_SPEED)
     vision = VisionTracker(
@@ -36,14 +35,17 @@ def main():
     )
     robot = RobotController(motion, vision, strategy)
 
-    # start MJPEG stream in background thread
+    # Pass shared camera + vision to stream client
+    stream_client.set_shared_components(camera, vision)
+
+    # Start stream in background
     stream_thread = Thread(target=start_stream, daemon=True)
     stream_thread.start()
 
-    # run your control loop (blocks until you Ctrl+C)
+    # Run robot
     robot.run()
 
-    # cleanup
+    # Cleanup
     motion.fin_off()
     camera.stop()
 
