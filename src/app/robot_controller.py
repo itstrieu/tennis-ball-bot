@@ -63,7 +63,7 @@ class RobotController:
                 getattr(self.motion, params["method"])(speed=params["speed"])
                 time.sleep(params["time"] * self.dev_slowdown)
                 self.motion.stop()
-                time.sleep(0.2 * self.dev_slowdown)
+                time.sleep(0.4 * self.dev_slowdown)
 
                 # 4) Pause for camera stabilization
                 self.logger.debug(
