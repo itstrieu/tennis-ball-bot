@@ -12,10 +12,6 @@ from src.streaming.stream_client import app
 from src.config import vision as vision_config, motion as motion_config
 
 
-def start_stream():
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-
-
 def main():
     # Only ONE camera init
     camera = get_camera()
