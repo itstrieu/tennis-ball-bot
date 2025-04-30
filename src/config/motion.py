@@ -16,7 +16,7 @@ SPEED = 60  # Default forward movement speed
 
 # Vision-to-motion logic thresholds
 SELF_TURN_THRESHOLD = 30  # Pixel offset to trigger turning
-CENTER_THRESHOLD = 50  # Max offset from center to be considered "centered"
+CENTER_THRESHOLD = 25  # Max offset from center to be considered "centered"
 
 # Rotational behavior
 SEARCH_ROTATE_SPEED = 70  # Speed during scanning rotation

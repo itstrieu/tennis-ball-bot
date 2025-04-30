@@ -77,7 +77,7 @@ class RobotController:
             self.motion.stop()
             state = "scanning"
             rotate_steps = 0
-            max_rotate_steps = int(360 / 30)  # Assuming ~30° per step
+            max_rotate_steps = int(360 / 30)
 
             while True:
                 if state == "scanning":
@@ -110,7 +110,10 @@ class RobotController:
                         time.sleep(self.assess_pause_time * self.dev_slowdown)
 
                     else:
-                        if self.last_area > self.decider.target_area * 0.8:
+                        self.logger.info(
+                            f"[DEBUG] No ball detected. Last seen area: {self.last_area}"
+                        )
+                        if self.last_area > self.decider.target_area * 0.5:
                             self.logger.info(
                                 "Ball likely just out of view — pushing forward."
                             )
@@ -120,8 +123,10 @@ class RobotController:
                             self.last_area = 0
                             state = "wait_then_restart"
                         else:
-                            self.logger.info("No ball — standing by.")
-                            time.sleep(0.5 * self.dev_slowdown)
+                            self.logger.info(
+                                "No ball detected — switching to scanning."
+                            )
+                            state = "scanning"
 
                 elif state == "wait_then_restart":
                     self.logger.info("Waiting 2 seconds before restarting scan.")
@@ -143,6 +148,9 @@ class RobotController:
             direction (str): Movement decision returned by the MovementDecider.
                              One of ['step_forward', 'small_forward', 'micro_forward',
                              'step_left', 'micro_left', 'step_right', 'micro_right', 'stop'].
+        """
+        """
+        Executes a discrete movement step based on the provided direction command.
         """
         reduced_speed = int(SPEED * 0.7)
         micro_speed = int(SPEED * 0.5)
