@@ -24,9 +24,9 @@ CENTER_THRESHOLD = 25
 
 # Movement parameters, one source of truth
 MOVEMENT_STEPS = {
-    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.4},
-    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.5), "time": 0.3},
-    "micro_forward": {"method": "move_forward", "speed": int(SPEED * 0.2), "time": 0.1},
+    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.8},
+    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.5},
+    "micro_forward": {"method": "move_forward", "speed": int(SPEED * 0.4), "time": 0.2},
     "step_left": {"method": "rotate_left", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
     "micro_left": {"method": "rotate_left", "speed": int(SPEED * 0.4), "time": 0.1},
     "step_right": {"method": "rotate_right", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
