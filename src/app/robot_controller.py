@@ -8,12 +8,6 @@ to perform search-and-retrieve behaviors for tennis balls using a camera feed.
 import logging
 import time
 from utils.logger import Logger
-from src.config.motion import (
-    SEARCH_ROTATE_SPEED,
-    CENTER_ROTATE_SPEED,
-    SPEED,
-)
-from src.app.camera_manager import get_camera
 from src.config.motion import MOVEMENT_STEPS, DEV_SLOWDOWN, INTER_STEP_PAUSE
 
 
@@ -70,7 +64,7 @@ class RobotController:
                 time.sleep(params["time"] * self.dev_slowdown)
                 self.motion.stop()
 
-                # ← **NEW:** pause for camera stabilization**
+                # 4) Pause for camera stabilization
                 time.sleep(INTER_STEP_PAUSE * self.dev_slowdown)
 
                 last_area = area
