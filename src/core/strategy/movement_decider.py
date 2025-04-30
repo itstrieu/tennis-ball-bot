@@ -1,3 +1,10 @@
+"""
+movement_decider.py
+
+Contains logic for interpreting ball position and size, and deciding how
+the robot should move to approach and center the ball.
+"""
+
 import logging
 from utils.logger import Logger
 from config.motion import (
@@ -7,6 +14,16 @@ from config.motion import (
 
 
 class MovementDecider:
+    """
+    Determines movement decisions based on object detection data.
+
+    Attributes:
+        target_area (int): Target bounding box area threshold to consider the ball 'close enough'.
+        center_threshold (int): Pixel offset from center within which the ball is considered 'centered'.
+        no_ball_count (int): Counter for how many frames have lacked ball detection.
+        last_area (float): Area of the last seen ball.
+    """
+
     def __init__(self, target_area=TARGET_AREA, center_threshold=CENTER_THRESHOLD):
         self.target_area = target_area
         self.center_threshold = center_threshold
@@ -18,6 +35,16 @@ class MovementDecider:
         self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
 
     def decide(self, offset, area):
+        """
+        Decide the next movement direction based on bounding box offset and area.
+
+        Args:
+            offset (float): Horizontal distance of ball center from camera center (pixels).
+            area (float): Bounding box area of the detected ball.
+
+        Returns:
+            str: Movement command such as 'step_forward', 'micro_left', or 'stop'.
+        """
         self.last_area = area
 
         if area > self.target_area * 0.2:
@@ -30,37 +57,52 @@ class MovementDecider:
         )
 
         if area >= self.target_area:
-            self.logger.info("Ball is close enough — stopping.")
+            self.logger.info(
+                f"[Decision] Stop — Ball close enough. Offset: {offset}, Area: {area}"
+            )
             self.approach_distance = 0
             return "stop"
 
         if area > self.target_area * 0.7:
             if abs(offset) <= self.center_threshold:
-                self.logger.info("Ball is very close and centered — micro forward.")
+                self.logger.info(
+                    f"[Decision] Micro forward — Very close and centered. Offset: {offset}, Area: {area}"
+                )
                 return "micro_forward"
 
         if abs(offset) <= self.center_threshold:
             if area > self.target_area * 0.5:
-                self.logger.info("Ball centered and close — small forward.")
+                self.logger.info(
+                    f"[Decision] Small forward — Centered and close. Offset: {offset}, Area: {area}"
+                )
                 return "small_forward"
             else:
-                self.logger.info("Ball centered and farther — normal forward.")
+                self.logger.info(
+                    f"[Decision] Step forward — Centered and far. Offset: {offset}, Area: {area}"
+                )
                 return "step_forward"
 
         if area > self.target_area * 0.5:
             if offset < 0:
-                self.logger.info("Ball slightly left and close — micro left.")
+                self.logger.info(
+                    f"[Decision] Micro left — Slightly left and close. Offset: {offset}, Area: {area}"
+                )
                 return "micro_left"
             else:
-                self.logger.info("Ball slightly right and close — micro right.")
+                self.logger.info(
+                    f"[Decision] Micro right — Slightly right and close. Offset: {offset}, Area: {area}"
+                )
                 return "micro_right"
-
         else:
             if offset < 0:
-                self.logger.info("Ball left and farther — step left.")
+                self.logger.info(
+                    f"[Decision] Step left — Left and far. Offset: {offset}, Area: {area}"
+                )
                 return "step_left"
             else:
-                self.logger.info("Ball right and farther — step right.")
+                self.logger.info(
+                    f"[Decision] Step right — Right and far. Offset: {offset}, Area: {area}"
+                )
                 return "step_right"
 
     def handle_no_ball(self):

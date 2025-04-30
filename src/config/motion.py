@@ -1,24 +1,29 @@
-# Fin Configuration
-FIN_PWM_FREQ = 5000
+"""
+motion.py
 
+Motion configuration constants for controlling robot behavior,
+including speed levels, turning thresholds, and target detection criteria.
+These are used by both the RobotController and Motion modules.
+"""
+
+# Fin Configuration
+FIN_PWM_FREQ = 6000
 FIN_SPEED = 85
 
 # Wheels
 PWM_FREQ = 10000
-SPEED = 60
+SPEED = 60  # Default forward movement speed
 
-SELF_TURN_THRESHOLD = 30
+# Vision-to-motion logic thresholds
+SELF_TURN_THRESHOLD = 30  # Pixel offset to trigger turning
+CENTER_THRESHOLD = 50  # Max offset from center to be considered "centered"
 
-# How far off-center (in pixels) is acceptable to go forward
-CENTER_THRESHOLD = 50
+# Rotational behavior
+SEARCH_ROTATE_SPEED = 70  # Speed during scanning rotation
+CENTER_ROTATE_SPEED = 60  # Speed used when centering on target
+SEARCH_ROTATE_DURATION = 0.5  # Duration of each rotation step during scanning
+SWITCH_DELAY = 0.3  # Delay between switching directions
+NO_BALL_PAUSE = 0.3  # Delay after losing sight of a ball
 
-
-# Rotation Configuration
-SEARCH_ROTATE_SPEED = 70
-CENTER_ROTATE_SPEED = 60
-SEARCH_ROTATE_DURATION = 0.5
-SWITCH_DELAY = 0.3
-NO_BALL_PAUSE = 0.3
-
-# When to stop approaching the ball (in bbox area)
-TARGET_AREA = 12000
+# Ball detection
+TARGET_AREA = 12000  # Minimum area to stop approaching the ball
