@@ -14,7 +14,7 @@ from src.config.motion import (
     SPEED,
 )
 from src.app.camera_manager import get_camera
-from src.config.motion import MOVEMENT_STEPS, DEV_SLOWDOWN
+from src.config.motion import MOVEMENT_STEPS, DEV_SLOWDOWN, INTER_STEP_PAUSE
 
 
 class RobotController:
@@ -46,28 +46,32 @@ class RobotController:
     def run(self):
         self.logger.info(f"Starting control loop {self.dev_mode}")
         last_area = 0
-
         try:
             while True:
+                # 1) Sense
                 frame = self.vision.get_frame()
                 bboxes = self.vision.detect_ball(frame)
-
                 if bboxes:
                     largest = max(bboxes, key=self.vision.calculate_area)
                     offset = self.vision.get_center_offset(largest)
                     area = self.vision.calculate_area(largest)
+                    self.decider.no_ball_count = 0
                 else:
                     offset = None
                     area = last_area
+                    self.decider.no_ball_count += 1
 
-                # Decide & execute
+                # 2) Decide
                 action = self.decider.decide(offset, area)
-                params = MOVEMENT_STEPS[action]
 
-                self.logger.debug(f"[EXECUTE] {action} → {params}")
+                # 3) Act
+                params = MOVEMENT_STEPS[action]
                 getattr(self.motion, params["method"])(speed=params["speed"])
                 time.sleep(params["time"] * self.dev_slowdown)
                 self.motion.stop()
+
+                # ← **NEW:** pause for camera stabilization**
+                time.sleep(INTER_STEP_PAUSE * self.dev_slowdown)
 
                 last_area = area
 
