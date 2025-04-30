@@ -25,11 +25,11 @@ CENTER_THRESHOLD = 25
 # Movement parameters, one source of truth
 MOVEMENT_STEPS = {
     "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.8},
-    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.5},
+    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.7},
     "micro_forward": {
         "method": "move_forward",
         "speed": int(SPEED * 0.6),
-        "time": 0.25,
+        "time": 0.4,
     },
     "step_left": {"method": "rotate_left", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
     "micro_left": {"method": "rotate_left", "speed": int(SPEED * 0.4), "time": 0.1},
@@ -37,7 +37,6 @@ MOVEMENT_STEPS = {
     "micro_right": {"method": "rotate_right", "speed": int(SPEED * 0.4), "time": 0.1},
     "stop": {"method": "stop", "speed": 0, "time": 1.0},
     "search": {"method": "rotate_right", "speed": SEARCH_ROTATE_SPEED, "time": 0.15},
-    "recovery_forward": {"method": "move_forward", "speed": SPEED, "time": 0.7},
 }
 
 # Ratios of TARGET_AREA to trigger decisions

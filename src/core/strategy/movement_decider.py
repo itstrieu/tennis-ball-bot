@@ -34,82 +34,72 @@ class MovementDecider:
 
     def decide(self, offset, area):
         """
-        Decide next action based solely on offset (px), area, and how many frames
-        since last detection (internal counter).
+        Decide next action based on current detection offset, size ratio, and no-ball history.
 
         Args:
-            offset (float|None): None if no detection this frame.
-            area   (float):     latest bbox area, or last known area.
+            offset (float|None): Horizontal distance of ball from center (None if no ball seen).
+            area (float): Bounding box area of the ball or last seen ball.
 
         Returns:
-            str: one of MOVEMENT_STEPS keys (e.g. 'step_forward', 'search', etc.).
+            str: One of the keys in MOVEMENT_STEPS (e.g., 'small_forward', 'micro_left', 'search').
         """
         ratio = area / self.target_area
         self.last_area = area
 
-        # Ball seen?
+        # Ball detected this frame
         if offset is not None:
             self.no_ball_count = 0
 
-            # 1) Stop if fully in range
+            # 1) Stop if ball is large enough
             if ratio >= THRESHOLDS["stop"]:
                 self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
                 return "stop"
 
-            # 2) Centered → micro or small forward (be gentle)
+            # 2) If centered
             if abs(offset) <= self.center_threshold:
                 if ratio >= THRESHOLDS["micro"]:
+                    # Ball is close and centered → fine-grained forward
                     self.logger.info(
-                        f"[DECIDE] micro_forward (ratio={ratio:.2f}, offset={offset})"
+                        f"[DECIDE] micro_forward (close + centered, ratio={ratio:.2f}, offset={offset})"
                     )
                     return "micro_forward"
-                elif ratio >= THRESHOLDS["small"]:
+                else:
+                    # Centered but far → gentle small step forward
                     self.logger.info(
-                        f"[DECIDE] small_forward (ratio={ratio:.2f}, offset={offset})"
+                        f"[DECIDE] small_forward (centered, ratio={ratio:.2f}, offset={offset})"
                     )
                     return "small_forward"
-                else:
-                    self.logger.info(
-                        f"[DECIDE] micro_forward (default step, offset={offset}, ratio={ratio:.2f})"
-                    )
-                    return "micro_forward"
 
-            # 3) Off-center → micro by default
+            # 3) If off-center
             if abs(offset) > self.center_threshold:
                 if abs(offset) > self.center_threshold * 2:
+                    # Far off-center → larger correction
                     choice = "step_left" if offset < 0 else "step_right"
                 else:
+                    # Slightly off-center → micro correction
                     choice = "micro_left" if offset < 0 else "micro_right"
                 self.logger.info(
-                    f"[DECIDE] {choice} (offset={offset}, ratio={ratio:.2f})"
+                    f"[DECIDE] {choice} (off-center, offset={offset}, ratio={ratio:.2f})"
                 )
                 return choice
 
-            # 4) Off-center → micro or full turn
-            if ratio >= THRESHOLDS["small"]:
-                choice = "micro_left" if offset < 0 else "micro_right"
-            else:
-                choice = "step_left" if offset < 0 else "step_right"
-            self.logger.info(f"[DECIDE] {choice} (ratio={ratio:.2f}, offset={offset})")
-            return choice
-
-        # No ball seen:
+        # No ball seen in this frame
         self.no_ball_count += 1
 
-        # 5) Recovery push if it was recently close
+        # 4) If ball was recently close enough → take a confident step forward
         if ratio >= THRESHOLDS["recovery"]:
-            self.logger.info(f"[DECIDE] recovery_forward (last_ratio={ratio:.2f})")
+            self.logger.info(f"[DECIDE] step_forward (last_ratio={ratio:.2f})")
             self.no_ball_count = 0
-            return "recovery_forward"
+            return "step_forward"
 
-        # 6) If we’ve been without a detection long enough → search
+        # 5) If we've gone too long without detection → start search
         if self.no_ball_count >= self.max_no_ball:
             self.logger.info(f"[DECIDE] search (no_ball_count={self.no_ball_count})")
             self.no_ball_count = 0
             return "search"
 
-        # 7) Otherwise keep searching by stepping
+        # 6) Otherwise continue scanning
         self.logger.info(
             f"[DECIDE] search (default, no_ball_count={self.no_ball_count})"
         )
-        return "search"
+        return "search"`
