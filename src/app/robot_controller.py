@@ -38,12 +38,13 @@ class RobotController:
         self.motion = motion
         self.vision = vision
         self.decider = decider
+        self.dev_mode = dev_mode
         self.dev_slowdown = DEV_SLOWDOWN if dev_mode else 1.0
 
         self.logger = Logger(name="robot", log_level=logging.INFO).get_logger()
 
     def run(self):
-        self.logger.info("Starting control loop (dev_mode=%s)", self.dev_mode)
+        self.logger.info(f"Starting control loop {self.dev_mode}")
         last_area = 0
 
         try:
