@@ -59,12 +59,23 @@ class RobotController:
                 action = self.decider.decide(offset, area)
 
                 # 3) Act
-                params = MOVEMENT_STEPS[action]
-                getattr(self.motion, params["method"])(speed=params["speed"])
-                time.sleep(params["time"] * self.dev_slowdown)
-                self.motion.stop()
+                if action in ["step_forward", "small_forward", "micro_forward"]:
+                    self.logger.info(f"[FORWARD] {action} — using micro-step override")
+                    self.motion.move_forward(speed=20)
+                    time.sleep(0.3 * self.dev_slowdown)
+                    self.motion.stop()
+                    time.sleep(0.2 * self.dev_slowdown)
+                else:
+                    params = MOVEMENT_STEPS[action]
+                    getattr(self.motion, params["method"])(speed=params["speed"])
+                    time.sleep(params["time"] * self.dev_slowdown)
+                    self.motion.stop()
+                    time.sleep(0.2 * self.dev_slowdown)
 
                 # 4) Pause for camera stabilization
+                self.logger.debug(
+                    f"[PAUSE] Holding for {INTER_STEP_PAUSE * self.dev_slowdown}s"
+                )
                 time.sleep(INTER_STEP_PAUSE * self.dev_slowdown)
 
                 last_area = area
