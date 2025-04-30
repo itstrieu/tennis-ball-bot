@@ -31,10 +31,26 @@ MOVEMENT_STEPS = {
         "speed": int(SPEED * 0.6),
         "time": 0.4,
     },
-    "step_left": {"method": "rotate_left", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
-    "micro_left": {"method": "rotate_left", "speed": int(SPEED * 0.4), "time": 0.1},
-    "step_right": {"method": "rotate_right", "speed": CENTER_ROTATE_SPEED, "time": 0.3},
-    "micro_right": {"method": "rotate_right", "speed": int(SPEED * 0.4), "time": 0.1},
+    "step_left": {
+        "method": "rotate_left",
+        "speed": int(CENTER_ROTATE_SPEED * 0.6),
+        "time": 0.2,
+    },
+    "micro_left": {
+        "method": "rotate_left",
+        "speed": int(CENTER_ROTATE_SPEED * 0.4),
+        "time": 0.1,
+    },
+    "step_right": {
+        "method": "rotate_right",
+        "speed": int(CENTER_ROTATE_SPEED * 0.6),
+        "time": 0.2,
+    },
+    "micro_right": {
+        "method": "rotate_right",
+        "speed": int(CENTER_ROTATE_SPEED * 0.4),
+        "time": 0.1,
+    },
     "stop": {"method": "stop", "speed": 0, "time": 1.0},
     "search": {"method": "rotate_right", "speed": SEARCH_ROTATE_SPEED, "time": 0.15},
 }
