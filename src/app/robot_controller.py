@@ -61,80 +61,79 @@ class RobotController:
         robot_logger = Logger(name="robot", log_level=logging.INFO)
         self.logger = robot_logger.get_logger()
 
+    def run(self):
+        """
+        Main control loop.
 
-def run(self):
-    """
-    Main control loop.
+        States:
+            - scanning: Rotates the robot to search for a ball.
+            - waiting_for_ball: Waits and reacts to ball detection.
+            - wait_then_restart: Waits briefly before restarting the scan cycle.
 
-    States:
-        - scanning: Rotates the robot to search for a ball.
-        - waiting_for_ball: Waits and reacts to ball detection.
-        - wait_then_restart: Waits briefly before restarting the scan cycle.
+        The loop continues until interrupted (e.g., Ctrl+C).
+        """
+        self.logger.info("RobotController started. Press Ctrl+C to stop.")
+        try:
+            self.motion.stop()
+            state = "scanning"
+            rotate_steps = 0
+            max_rotate_steps = int(360 / 30)  # Assuming ~30° per step
 
-    The loop continues until interrupted (e.g., Ctrl+C).
-    """
-    self.logger.info("RobotController started. Press Ctrl+C to stop.")
-    try:
-        self.motion.stop()
-        state = "scanning"
-        rotate_steps = 0
-        max_rotate_steps = int(360 / 30)  # Assuming ~30° per step
-
-        while True:
-            if state == "scanning":
-                if rotate_steps < max_rotate_steps:
-                    self.logger.info(
-                        f"Rotating right (step {rotate_steps + 1}/{max_rotate_steps})"
-                    )
-                    self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
-                    time.sleep(0.3 * self.dev_slowdown)
-                    self.motion.stop()
-                    rotate_steps += 1
-                else:
-                    self.logger.info("Full rotation complete. Waiting for ball.")
-                    state = "waiting_for_ball"
-
-            elif state == "waiting_for_ball":
-                frame = self.vision.get_frame()
-                bboxes = self.vision.detect_ball(frame)
-
-                if bboxes:
-                    largest = max(bboxes, key=self.vision.calculate_area)
-                    offset = self.vision.get_center_offset(largest)
-                    area = self.vision.calculate_area(largest)
-
-                    direction = self.decider.decide(offset, area)
-                    self._execute_step(direction)
-
-                    self.last_area = area
-                    self.motion.stop()
-                    time.sleep(self.assess_pause_time * self.dev_slowdown)
-
-                else:
-                    if self.last_area > self.decider.target_area * 0.8:
+            while True:
+                if state == "scanning":
+                    if rotate_steps < max_rotate_steps:
                         self.logger.info(
-                            "Ball likely just out of view — pushing forward."
+                            f"Rotating right (step {rotate_steps + 1}/{max_rotate_steps})"
                         )
-                        self.motion.move_forward(speed=SPEED)
-                        time.sleep(1.0 * self.dev_slowdown)
+                        self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
+                        time.sleep(0.3 * self.dev_slowdown)
                         self.motion.stop()
-                        self.last_area = 0
-                        state = "wait_then_restart"
+                        rotate_steps += 1
                     else:
-                        self.logger.info("No ball — standing by.")
-                        time.sleep(0.5 * self.dev_slowdown)
+                        self.logger.info("Full rotation complete. Waiting for ball.")
+                        state = "waiting_for_ball"
 
-            elif state == "wait_then_restart":
-                self.logger.info("Waiting 2 seconds before restarting scan.")
-                time.sleep(2.0 * self.dev_slowdown)
-                rotate_steps = 0
-                state = "scanning"
+                elif state == "waiting_for_ball":
+                    frame = self.vision.get_frame()
+                    bboxes = self.vision.detect_ball(frame)
 
-    except KeyboardInterrupt:
-        self.logger.info("KeyboardInterrupt received: stopping robot...")
-    finally:
-        self.motion.stop()
-        self.logger.info("RobotController shutdown complete.")
+                    if bboxes:
+                        largest = max(bboxes, key=self.vision.calculate_area)
+                        offset = self.vision.get_center_offset(largest)
+                        area = self.vision.calculate_area(largest)
+
+                        direction = self.decider.decide(offset, area)
+                        self._execute_step(direction)
+
+                        self.last_area = area
+                        self.motion.stop()
+                        time.sleep(self.assess_pause_time * self.dev_slowdown)
+
+                    else:
+                        if self.last_area > self.decider.target_area * 0.8:
+                            self.logger.info(
+                                "Ball likely just out of view — pushing forward."
+                            )
+                            self.motion.move_forward(speed=SPEED)
+                            time.sleep(1.0 * self.dev_slowdown)
+                            self.motion.stop()
+                            self.last_area = 0
+                            state = "wait_then_restart"
+                        else:
+                            self.logger.info("No ball — standing by.")
+                            time.sleep(0.5 * self.dev_slowdown)
+
+                elif state == "wait_then_restart":
+                    self.logger.info("Waiting 2 seconds before restarting scan.")
+                    time.sleep(2.0 * self.dev_slowdown)
+                    rotate_steps = 0
+                    state = "scanning"
+
+        except KeyboardInterrupt:
+            self.logger.info("KeyboardInterrupt received: stopping robot...")
+        finally:
+            self.motion.stop()
+            self.logger.info("RobotController shutdown complete.")
 
     def _execute_step(self, direction):
         """
