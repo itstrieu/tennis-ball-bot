@@ -56,20 +56,32 @@ class MovementDecider:
                 self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
                 return "stop"
 
-            # 2) Very close & centered → micro forward
-            if ratio >= THRESHOLDS["micro"] and abs(offset) <= self.center_threshold:
-                self.logger.info(
-                    f"[DECIDE] micro_forward (ratio={ratio:.2f}, offset={offset})"
-                )
-                return "micro_forward"
-
-            # 3) Centered, farther → small or full step
+            # 2) Centered → micro or small forward (be gentle)
             if abs(offset) <= self.center_threshold:
-                choice = (
-                    "small_forward" if ratio >= THRESHOLDS["small"] else "step_forward"
-                )
+                if ratio >= THRESHOLDS["micro"]:
+                    self.logger.info(
+                        f"[DECIDE] micro_forward (ratio={ratio:.2f}, offset={offset})"
+                    )
+                    return "micro_forward"
+                elif ratio >= THRESHOLDS["small"]:
+                    self.logger.info(
+                        f"[DECIDE] small_forward (ratio={ratio:.2f}, offset={offset})"
+                    )
+                    return "small_forward"
+                else:
+                    self.logger.info(
+                        f"[DECIDE] micro_forward (default step, offset={offset}, ratio={ratio:.2f})"
+                    )
+                    return "micro_forward"
+
+            # 3) Off-center → micro by default
+            if abs(offset) > self.center_threshold:
+                if abs(offset) > self.center_threshold * 2:
+                    choice = "step_left" if offset < 0 else "step_right"
+                else:
+                    choice = "micro_left" if offset < 0 else "micro_right"
                 self.logger.info(
-                    f"[DECIDE] {choice} (ratio={ratio:.2f}, offset={offset})"
+                    f"[DECIDE] {choice} (offset={offset}, ratio={ratio:.2f})"
                 )
                 return choice
 
