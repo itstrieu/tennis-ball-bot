@@ -77,20 +77,23 @@ class RobotController:
             self.motion.stop()
             state = "scanning"
             rotate_steps = 0
-            max_rotate_steps = int(360 / 30)
+            max_rotate_steps = int(360 / 30)  # ~30° per step
+            no_detection_frames = 0
 
             while True:
                 if state == "scanning":
                     if rotate_steps < max_rotate_steps:
                         self.logger.info(
-                            f"Rotating right (step {rotate_steps + 1}/{max_rotate_steps})"
+                            f"[SCAN] Rotating right (step {rotate_steps + 1}/{max_rotate_steps})"
                         )
                         self.motion.rotate_right(speed=SEARCH_ROTATE_SPEED)
                         time.sleep(0.3 * self.dev_slowdown)
                         self.motion.stop()
                         rotate_steps += 1
                     else:
-                        self.logger.info("Full rotation complete. Waiting for ball.")
+                        self.logger.info(
+                            "[SCAN] Full rotation complete. Switching to ball detection."
+                        )
                         state = "waiting_for_ball"
 
                 elif state == "waiting_for_ball":
@@ -98,10 +101,14 @@ class RobotController:
                     bboxes = self.vision.detect_ball(frame)
 
                     if bboxes:
+                        no_detection_frames = 0
                         largest = max(bboxes, key=self.vision.calculate_area)
                         offset = self.vision.get_center_offset(largest)
                         area = self.vision.calculate_area(largest)
 
+                        self.logger.info(
+                            f"[TRACK] Ball seen — Offset: {offset}, Area: {area}"
+                        )
                         direction = self.decider.decide(offset, area)
                         self._execute_step(direction)
 
@@ -110,26 +117,37 @@ class RobotController:
                         time.sleep(self.assess_pause_time * self.dev_slowdown)
 
                     else:
+                        no_detection_frames += 1
                         self.logger.info(
-                            f"[DEBUG] No ball detected. Last seen area: {self.last_area}"
+                            f"[DEBUG] No ball detected. Last seen area: {self.last_area}, Missed frames: {no_detection_frames}"
                         )
-                        if self.last_area > self.decider.target_area * 0.5:
+
+                        if self.last_area > 2500:  # hardcoded based on trial feedback
                             self.logger.info(
-                                "Ball likely just out of view — pushing forward."
+                                "[RECOVERY] Ball likely out of view — executing forward push."
                             )
                             self.motion.move_forward(speed=SPEED)
-                            time.sleep(1.0 * self.dev_slowdown)
+                            time.sleep(2.0 * self.dev_slowdown)  # push longer
                             self.motion.stop()
                             self.last_area = 0
+                            no_detection_frames = 0
                             state = "wait_then_restart"
-                        else:
+
+                        elif no_detection_frames >= 5:
                             self.logger.info(
-                                "No ball detected — switching to scanning."
+                                "[RECOVERY] No ball for multiple frames — resetting last_area and scanning again."
                             )
+                            self.last_area = 0
+                            no_detection_frames = 0
+                            rotate_steps = 0
                             state = "scanning"
 
+                        else:
+                            self.logger.info("[WAIT] Still searching for ball...")
+                            time.sleep(0.3 * self.dev_slowdown)
+
                 elif state == "wait_then_restart":
-                    self.logger.info("Waiting 2 seconds before restarting scan.")
+                    self.logger.info("[WAIT] Waiting 2 seconds before restarting scan.")
                     time.sleep(2.0 * self.dev_slowdown)
                     rotate_steps = 0
                     state = "scanning"
