@@ -51,7 +51,7 @@ MOVEMENT_STEPS = {
         "speed": int(CENTER_ROTATE_SPEED * 0.7),
         "time": 0.1,
     },
-    "stop": {"method": "stop", "time": 1.0},
+    "stop": {"method": "stop", "speed": 0, "time": 1.0},
     "search": {
         "method": "rotate_right",
         "speed": int(SEARCH_ROTATE_SPEED),
