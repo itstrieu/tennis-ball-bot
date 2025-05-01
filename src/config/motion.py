@@ -15,9 +15,9 @@ PWM_FREQ = 10000
 
 # Basic speeds & thresholds
 SPEED = 55
-CENTER_ROTATE_SPEED = 130
-SEARCH_ROTATE_SPEED = 130
-INTER_STEP_PAUSE = 0.5  # seconds, tune as needed (higher = slower)
+CENTER_ROTATE_SPEED = 100
+SEARCH_ROTATE_SPEED = 100
+INTER_STEP_PAUSE = 0.2  # seconds, tune as needed (higher = slower)
 
 TARGET_AREA = 12000
 CENTER_THRESHOLD = 25
@@ -38,7 +38,7 @@ MOVEMENT_STEPS = {
     },
     "micro_left": {
         "method": "rotate_left",
-        "speed": int(CENTER_ROTATE_SPEED * 0.7),
+        "speed": int(CENTER_ROTATE_SPEED),
         "time": 0.1,
     },
     "step_right": {
@@ -48,7 +48,7 @@ MOVEMENT_STEPS = {
     },
     "micro_right": {
         "method": "rotate_right",
-        "speed": int(CENTER_ROTATE_SPEED * 0.7),
+        "speed": int(CENTER_ROTATE_SPEED),
         "time": 0.1,
     },
     "stop": {"method": "stop", "speed": 0, "time": 1.0},
@@ -68,4 +68,4 @@ THRESHOLDS = {
 }
 
 # Dev‐only slowdown factor (optional)
-DEV_SLOWDOWN = 2.0
+DEV_SLOWDOWN = 1.2
