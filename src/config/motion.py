@@ -15,8 +15,8 @@ PWM_FREQ = 10000
 
 # Basic speeds & thresholds
 SPEED = 55
-CENTER_ROTATE_SPEED = 90
-SEARCH_ROTATE_SPEED = 90
+CENTER_ROTATE_SPEED = 130
+SEARCH_ROTATE_SPEED = 130
 INTER_STEP_PAUSE = 0.5  # seconds, tune as needed (higher = slower)
 
 TARGET_AREA = 12000
