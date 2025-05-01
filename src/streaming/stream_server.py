@@ -163,6 +163,10 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 if __name__ == "__main__":
-    # Note: your robot script must call set_shared_components(camera,vision)
-    # before clients connect, so that `camera` is not None.
-    uvicorn.run("stream_server:app", host="0.0.0.0", port=8000, log_level="info")
+    import sys
+
+    try:
+        uvicorn.run("stream_server:app", host="0.0.0.0", port=8000, log_level="info")
+    except KeyboardInterrupt:
+        print("\n🛑 Server interrupted by user, shutting down.")
+        sys.exit(0)
