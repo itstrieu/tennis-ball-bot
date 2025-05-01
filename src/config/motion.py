@@ -34,7 +34,7 @@ MOVEMENT_STEPS = {
     "step_left": {
         "method": "rotate_left",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 2,
+        "time": 1,
     },
     "micro_left": {
         "method": "rotate_left",
@@ -44,7 +44,7 @@ MOVEMENT_STEPS = {
     "step_right": {
         "method": "rotate_right",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 2,
+        "time": 1,
     },
     "micro_right": {
         "method": "rotate_right",
@@ -55,7 +55,7 @@ MOVEMENT_STEPS = {
     "search": {
         "method": "rotate_right",
         "speed": int(SEARCH_ROTATE_SPEED),
-        "time": 0.3,
+        "time": 1,
     },
 }
 
