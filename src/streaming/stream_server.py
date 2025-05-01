@@ -10,6 +10,9 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 import uvicorn
 
+from picamera2.encoders import MJPEGEncoder, Quality
+from picamera2.outputs import FileOutput
+
 # You’ll need to call set_shared_components(...) from your robot script
 # to inject a Picamera2 instance. Until then, camera is None.
 camera = None
