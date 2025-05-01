@@ -8,6 +8,9 @@ from fastapi.responses import HTMLResponse
 from picamera2.encoders import MJPEGEncoder, Quality
 from picamera2.outputs import FileOutput
 
+print("[DEBUG] stream_server.py loaded")
+
+
 # Shared components from robot main()
 camera = None
 vision = None
