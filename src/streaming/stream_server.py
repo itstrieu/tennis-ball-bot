@@ -130,7 +130,7 @@ async def index():
         <div id="status">Connecting...</div>
         <img id="stream" src="" alt="Live camera feed"/>
         <script>
-            const ws = new WebSocket("ws://" + location.host + "/ws");
+            const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
             const img = document.getElementById("stream");
             const status = document.getElementById("status");
 
