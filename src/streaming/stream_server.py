@@ -5,7 +5,6 @@ import asyncio
 import logging
 from threading import Condition
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 import uvicorn
@@ -13,8 +12,6 @@ import uvicorn
 from picamera2.encoders import MJPEGEncoder, Quality
 from picamera2.outputs import FileOutput
 
-# You’ll need to call set_shared_components(...) from your robot script
-# to inject a Picamera2 instance. Until then, camera is None.
 camera = None
 vision = None
 
@@ -58,7 +55,10 @@ class JpegStream:
             )
             frame_count = 0
             while self.active:
-                jpeg_data = await self.output.read()
+                try:
+                    jpeg_data = await self.output.read()
+                except asyncio.CancelledError:
+                    break
                 await asyncio.gather(
                     *(ws.send_bytes(jpeg_data) for ws in list(self.connections)),
                     return_exceptions=True,
@@ -77,9 +77,16 @@ class JpegStream:
     async def stop(self):
         if self.active:
             self.active = False
+            # Wake any blocked read()
+            with self.output.condition:
+                self.output.condition.notify_all()
             if self.task:
-                await self.task
-                self.task = None
+                try:
+                    await self.task
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    self.task = None
 
 
 jpeg_stream = JpegStream()
@@ -104,19 +111,15 @@ async def index():
       <style>
         body { font-family: Arial, sans-serif; text-align: center; padding: 2em; }
         #stream { border: 3px solid #444; border-radius: 6px; width: 640px; }
-        .controls { margin: 1em; }
-        button { padding: 0.5em 1em; margin: 0 0.5em; }
       </style>
     </head>
     <body>
       <h1>Tennis Ball Bot • Live Stream</h1>
-      <div class="controls">
-        <button onclick="fetch('/start',{method:'POST'})">Start Stream</button>
-        <button onclick="fetch('/stop',{method:'POST'})">Stop Stream</button>
-      </div>
       <img id="stream" src="" alt="Live camera feed"/>
       <script>
-        const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
+        const ws = new WebSocket(
+          (location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws'
+        );
         const img = document.getElementById('stream');
         ws.binaryType = 'blob';
         ws.onmessage = e => {
@@ -155,7 +158,10 @@ async def websocket_endpoint(ws: WebSocket):
         await jpeg_stream.start()
     try:
         while True:
-            await asyncio.sleep(1)
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
     finally:
         jpeg_stream.connections.discard(ws)
         if not jpeg_stream.connections:
