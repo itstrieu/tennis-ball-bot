@@ -7,8 +7,7 @@ from src.app.robot_controller import RobotController
 from src.core.navigation.motion_controller import MotionController
 from src.core.detection.vision_tracker import VisionTracker
 from src.core.strategy.movement_decider import MovementDecider
-from src.streaming import stream_client
-from src.streaming.stream_client import app
+from src.streaming.stream_server import app, set_shared_components
 from src.config import vision as vision_config, motion as motion_config
 
 
@@ -35,8 +34,8 @@ def main():
     )
     robot = RobotController(motion, vision, strategy)
 
-    # Pass shared camera + vision to stream client
-    stream_client.set_shared_components(camera, vision)
+    # Pass shared camera + vision to stream server
+    set_shared_components(camera, vision)
 
     # Start stream in background
     stream_thread = Thread(target=start_stream, daemon=True)

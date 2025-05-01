@@ -1,0 +1,7 @@
+tunnel: csulb-tennis-ball-bot
+credentials-file: /home/pi/.cloudflared/<tunnel_id>.json
+
+ingress:
+  - hostname: tennis-ball-bot.win
+    service: http://localhost:8000
+  - service: http_status:404
