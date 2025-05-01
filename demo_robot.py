@@ -1,6 +1,6 @@
 from threading import Thread
-import uvicorn
 import logging
+import uvicorn
 
 from src.app.camera_manager import get_camera
 from src.app.robot_controller import RobotController
@@ -13,7 +13,9 @@ from src.config import vision as vision_config, motion as motion_config
 
 def start_stream():
     print("[INFO] Starting FastAPI stream server on port 8000...")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+    server.run()
 
 
 def main():
@@ -38,11 +40,11 @@ def main():
     # Pass shared camera + vision to stream server
     set_shared_components(camera, vision)
 
-    # Start stream in background
+    # Start stream in background (same process, not subprocess)
     stream_thread = Thread(target=start_stream, daemon=True)
     stream_thread.start()
 
-    # Run robot
+    # Run robot loop
     robot.run()
 
     # Cleanup
