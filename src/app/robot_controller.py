@@ -28,7 +28,7 @@ class RobotController:
         dev_mode (bool): Whether development slowdown is active.
     """
 
-    def __init__(self, motion, vision, decider, dev_mode=True):
+    def __init__(self, motion, vision, decider, dev_mode=False):
         self.motion = motion
         self.vision = vision
         self.decider = decider
