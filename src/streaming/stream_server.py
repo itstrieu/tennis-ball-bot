@@ -1,17 +1,27 @@
+# src/streaming/stream_server.py
+
 import io
 import asyncio
 import logging
-from threading import Condition
-from contextlib import asynccontextmanager
+from threading import Condition, Thread
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
+import uvicorn
+
+# --- import your robot modules ---
+from src.app.camera_manager import get_camera
+from src.app.robot_controller import RobotController
+from src.core.navigation.motion_controller import MotionController
+from src.core.detection.vision_tracker import VisionTracker
+from src.core.strategy.movement_decider import MovementDecider
+from src.config import vision as vision_config, motion as motion_config
+
+# ------------------------------------
+
+# --- streaming classes (unchanged) ---
 from picamera2.encoders import MJPEGEncoder, Quality
 from picamera2.outputs import FileOutput
 
-print("[DEBUG] stream_server.py loaded")
-
-
-# Shared components from robot main()
 camera = None
 vision = None
 
@@ -50,26 +60,23 @@ class JpegStream:
             logging.error("Camera not initialized")
             return
         try:
-            print("[*] Starting camera recording")
             camera.start_recording(
                 MJPEGEncoder(), FileOutput(self.output), Quality.MEDIUM
             )
-            self.frame_count = 0
+            frame_count = 0
             while self.active:
                 jpeg_data = await self.output.read()
-                tasks = [ws.send_bytes(jpeg_data) for ws in self.connections.copy()]
-                await asyncio.gather(*tasks, return_exceptions=True)
-                self.frame_count += 1
-                if self.frame_count % 60 == 0:
+                await asyncio.gather(
+                    *(ws.send_bytes(jpeg_data) for ws in list(self.connections)),
+                    return_exceptions=True,
+                )
+                frame_count += 1
+                if frame_count % 60 == 0:
                     print(f"[+] Streaming to {len(self.connections)} clients")
         except Exception as e:
             logging.error(f"Streaming error: {e}")
         finally:
-            try:
-                print("[*] Stopping camera recording")
-                camera.stop_recording()
-            except Exception:
-                pass
+            camera.stop_recording()
 
     async def start(self):
         if not self.active:
@@ -85,105 +92,97 @@ class JpegStream:
 
 
 jpeg_stream = JpegStream()
+# ------------------------------------
+
+app = FastAPI()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    await jpeg_stream.stop()
+# 1) On startup, initialize camera + robot and launch robot.run()
+@app.on_event("startup")
+def startup_event():
+    cam = get_camera()
+    motion = MotionController()
+    motion.fin_on(speed=motion_config.FIN_SPEED)
+    vis = VisionTracker(
+        model_path=vision_config.MODEL_PATH,
+        frame_width=vision_config.FRAME_WIDTH,
+        camera=cam,
+        camera_offset=vision_config.CAMERA_OFFSET,
+    )
+    strategy = MovementDecider(
+        target_area=motion_config.TARGET_AREA,
+        center_threshold=motion_config.CENTER_THRESHOLD,
+    )
+    robot = RobotController(motion, vis, strategy)
+
+    set_shared_components(cam, vis)
+
+    def run_robot():
+        try:
+            robot.run()
+        finally:
+            motion.fin_off()
+            cam.stop()
+
+    Thread(target=run_robot, daemon=True).start()
+    print(
+        "[INFO] Robot thread started. All routes registered:",
+        [r.path for r in app.routes],
+    )
 
 
-app = FastAPI(lifespan=lifespan)
-
-
+# 2) Serve the HTML + JS UI
 @app.get("/", response_class=HTMLResponse)
 async def index():
     return """
     <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Tennis Ball Bot • Live Stream</title>
-        <style>
-            body {
-                margin: 0;
-                font-family: Arial, sans-serif;
-                background-color: #f7f7f7;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                padding: 20px;
-            }
-            h1 {
-                margin-bottom: 10px;
-            }
-            #stream {
-                width: 640px;
-                height: auto;
-                border: 3px solid #444;
-                border-radius: 6px;
-                margin-top: 20px;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            }
-            #status {
-                margin-top: 10px;
-                font-size: 14px;
-                color: #666;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Tennis Ball Bot • Live Stream</h1>
-        <div id="status">Connecting...</div>
-        <img id="stream" src="" alt="Live camera feed"/>
-        <script>
-            const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
-            const img = document.getElementById("stream");
-            const status = document.getElementById("status");
-
-            ws.binaryType = "blob";
-
-            ws.onopen = () => {
-                status.textContent = "🟢 Connected";
-            };
-            ws.onclose = () => {
-                status.textContent = "🔴 Disconnected";
-            };
-            ws.onerror = () => {
-                status.textContent = "⚠️ Error with WebSocket.";
-            };
-
-            ws.onmessage = (event) => {
-                const url = URL.createObjectURL(event.data);
-                img.src = url;
-                setTimeout(() => URL.revokeObjectURL(url), 100);
-            };
-        </script>
-    </body>
-    </html>
+    <html><head><title>Live Stream</title></head><body>
+      <h1>Tennis Ball Bot Live</h1>
+      <div id="status">Connecting...</div>
+      <img id="stream"/>
+      <script>
+        const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')
+                                  +location.host+'/ws');
+        const status = document.getElementById('status');
+        const img = document.getElementById('stream');
+        ws.binaryType='blob';
+        ws.onopen   = ()=>status.textContent='🟢 Connected';
+        ws.onclose  = ()=>status.textContent='🔴 Disconnected';
+        ws.onerror  = ()=>status.textContent='⚠️ Error';
+        ws.onmessage= e=>{
+          const url=URL.createObjectURL(e.data);
+          img.src=url;
+          setTimeout(()=>URL.revokeObjectURL(url),100);
+        };
+      </script>
+    </body></html>
     """
 
 
-@app.get("/debug")
-def debug():
-    return {"camera_exists": camera is not None, "vision_exists": vision is not None}
-
-
+# 3) WebSocket endpoint for MJPEG frames
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    print(f"[+] WebSocket connected: {websocket.client}")
-    jpeg_stream.connections.add(websocket)
-
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+    jpeg_stream.connections.add(ws)
     if not jpeg_stream.active:
         await jpeg_stream.start()
-
     try:
         while True:
             await asyncio.sleep(1)
-    except Exception:
-        pass
     finally:
-        print(f"[-] WebSocket disconnected: {websocket.client}")
-        jpeg_stream.connections.remove(websocket)
+        jpeg_stream.connections.discard(ws)
         if not jpeg_stream.connections:
             await jpeg_stream.stop()
+
+
+# 4) (Optional) Debug route
+@app.get("/debug")
+def debug():
+    return {"camera": camera is not None, "vision": vision is not None}
+
+
+# 5) Run with: python src/streaming/stream_server.py
+if __name__ == "__main__":
+    uvicorn.run(
+        "src.streaming.stream_server:app", host="0.0.0.0", port=8000, log_level="info"
+    )
