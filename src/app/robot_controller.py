@@ -59,11 +59,7 @@ class RobotController:
                 action = self.decider.decide(offset, area)
 
                 # 3) Act
-                params = MOVEMENT_STEPS[action]
-                getattr(self.motion, params["method"])(speed=params["speed"])
-                time.sleep(params["time"] * self.dev_slowdown)
-                self.motion.stop()
-                time.sleep(0.4 * self.dev_slowdown)
+                self.execute_motion(action)
 
                 # 4) Pause for camera stabilization
                 self.logger.debug(
@@ -78,3 +74,14 @@ class RobotController:
         finally:
             self.motion.stop()
             self.logger.info("Control loop ended.")
+
+    def execute_motion(self, action):
+        params = MOVEMENT_STEPS[action]
+        method = getattr(self.motion, params["method"])
+        if "speed" in params:
+            method(speed=params["speed"])
+        else:
+            method()
+        time.sleep(params["time"] * self.dev_slowdown)
+        self.motion.stop()
+        time.sleep(0.4 * self.dev_slowdown)
