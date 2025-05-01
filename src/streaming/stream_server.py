@@ -51,11 +51,14 @@ class JpegStream:
             camera.start_recording(
                 MJPEGEncoder(), FileOutput(self.output), Quality.MEDIUM
             )
+            self.frame_count = 0
             while self.active:
                 jpeg_data = await self.output.read()
                 tasks = [ws.send_bytes(jpeg_data) for ws in self.connections.copy()]
                 await asyncio.gather(*tasks, return_exceptions=True)
-                print(f"[+] Sent frame to {len(self.connections)} clients")
+                self.frame_count += 1
+                if self.frame_count % 60 == 0:
+                    print(f"[+] Streaming to {len(self.connections)} clients")
         except Exception as e:
             logging.error(f"Streaming error: {e}")
         finally:
@@ -168,7 +171,6 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"[+] WebSocket connected: {websocket.client}")
     jpeg_stream.connections.add(websocket)
 
-    # Auto-start streaming on first connection
     if not jpeg_stream.active:
         await jpeg_stream.start()
 
