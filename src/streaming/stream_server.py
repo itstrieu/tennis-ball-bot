@@ -169,6 +169,11 @@ async def index():
     """
 
 
+@app.get("/debug")
+def debug():
+    return {"camera_exists": camera is not None, "vision_exists": vision is not None}
+
+
 @app.post("/start")
 async def start_stream():
     await jpeg_stream.start()
