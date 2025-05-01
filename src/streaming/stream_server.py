@@ -4,7 +4,7 @@ import logging
 from threading import Condition
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
 from picamera2.encoders import MJPEGEncoder, Quality
 from picamera2.outputs import FileOutput
 
@@ -47,6 +47,7 @@ class JpegStream:
             logging.error("Camera not initialized")
             return
         try:
+            print("[*] Starting camera recording")
             camera.start_recording(
                 MJPEGEncoder(), FileOutput(self.output), Quality.MEDIUM
             )
@@ -54,10 +55,12 @@ class JpegStream:
                 jpeg_data = await self.output.read()
                 tasks = [ws.send_bytes(jpeg_data) for ws in self.connections.copy()]
                 await asyncio.gather(*tasks, return_exceptions=True)
+                print(f"[+] Sent frame to {len(self.connections)} clients")
         except Exception as e:
             logging.error(f"Streaming error: {e}")
         finally:
             try:
+                print("[*] Stopping camera recording")
                 camera.stop_recording()
             except Exception:
                 pass
@@ -115,18 +118,6 @@ async def index():
                 margin-top: 20px;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.2);
             }
-            .controls {
-                margin-top: 20px;
-                display: flex;
-                gap: 10px;
-            }
-            button {
-                padding: 10px 20px;
-                font-size: 16px;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-            }
             #status {
                 margin-top: 10px;
                 font-size: 14px;
@@ -136,10 +127,6 @@ async def index():
     </head>
     <body>
         <h1>Tennis Ball Bot • Live Stream</h1>
-        <div class="controls">
-            <button onclick="fetch('/start', {method: 'POST'})">Start Stream</button>
-            <button onclick="fetch('/stop', {method: 'POST'})">Stop Stream</button>
-        </div>
         <div id="status">Connecting...</div>
         <img id="stream" src="" alt="Live camera feed"/>
         <script>
@@ -162,6 +149,7 @@ async def index():
             ws.onmessage = (event) => {
                 const url = URL.createObjectURL(event.data);
                 img.src = url;
+                setTimeout(() => URL.revokeObjectURL(url), 100);
             };
         </script>
     </body>
@@ -174,28 +162,23 @@ def debug():
     return {"camera_exists": camera is not None, "vision_exists": vision is not None}
 
 
-@app.post("/start")
-async def start_stream():
-    await jpeg_stream.start()
-    return {"message": "Stream started"}
-
-
-@app.post("/stop")
-async def stop_stream():
-    await jpeg_stream.stop()
-    return {"message": "Stream stopped"}
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    print(f"[+] WebSocket connected: {websocket.client}")
     jpeg_stream.connections.add(websocket)
+
+    # Auto-start streaming on first connection
+    if not jpeg_stream.active:
+        await jpeg_stream.start()
+
     try:
         while True:
-            await websocket.receive_text()
+            await asyncio.sleep(1)
     except Exception:
         pass
     finally:
+        print(f"[-] WebSocket disconnected: {websocket.client}")
         jpeg_stream.connections.remove(websocket)
         if not jpeg_stream.connections:
             await jpeg_stream.stop()
