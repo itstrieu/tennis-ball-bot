@@ -103,7 +103,6 @@ class MotionController:
             raw_duty = abs(direction) * base
             scaled = self._apply_scale(motor_id, raw_duty)
             pins = self.motors[motor_id]
-            # direction multiplier preserves sign
             self._set_motor(pins["IN1"], pins["IN2"], pins["PWM"], direction, scaled)
 
     def move_forward(self, speed=None, duration=None):
@@ -134,7 +133,7 @@ class MotionController:
             time.sleep(duration)
             self.stop()
 
-    def stop(self):
+    def stop(self, speed=0, duration=None):
         """Halt motors and disable driver."""
         lgpio.gpio_write(self.chip, self.stby, 0)
         for pins in self.motors.values():

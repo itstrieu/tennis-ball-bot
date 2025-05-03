@@ -17,12 +17,12 @@ PWM_FREQ = 10000
 SPEED = 55
 CENTER_ROTATE_SPEED = 100
 SEARCH_ROTATE_SPEED = 100
-INTER_STEP_PAUSE = 0.2  # seconds, tune as needed (higher = slower)
+INTER_STEP_PAUSE = 0.2
 
 TARGET_AREA = 12000
 CENTER_THRESHOLD = 25
 
-# Movement parameters, one source of truth
+# Movement parameters
 MOVEMENT_STEPS = {
     "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.7},
     "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.6},
@@ -68,4 +68,4 @@ THRESHOLDS = {
 }
 
 # Dev‐only slowdown factor (optional)
-DEV_SLOWDOWN = 1.2
+DEV_SLOWDOWN = 2

@@ -1,6 +1,8 @@
 # src/core/detection/vision_tracker.py
 from .yolo_inference import YOLOInference
 from src.config import vision as vision_config
+from utils.logger import Logger
+import logging
 
 
 class VisionTracker:
@@ -21,6 +23,8 @@ class VisionTracker:
 
         self.camera = camera  # Use the shared camera instance
 
+        self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
+
     def get_frame(self):
         """
         Capture a frame from the shared camera.
@@ -29,7 +33,7 @@ class VisionTracker:
 
     def detect_ball(self, frame):
         """
-        Run YOLO model, filter for 'tennis ball', return all detected tennis balls' bounding boxes.
+        Run YOLO model, filter for 'tennis_ball', return all detected tennis balls' bounding boxes.
         """
         predictions = self.model.predict(frame)
 
@@ -40,8 +44,8 @@ class VisionTracker:
             if label.lower() == "tennis_ball" and conf >= self.conf_threshold
         ]
 
-        print(f"[DEBUG] Raw predictions: {len(predictions)}")
-        print(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
+        self.logger.debug(f"[DEBUG] Raw predictions: {len(predictions)}")
+        self.logger.debug(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
 
         # If no tennis balls are detected, return an empty list
         if not tennis_balls:
