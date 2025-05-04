@@ -10,6 +10,8 @@ import asyncio
 import logging
 import time
 from typing import Optional, Set
+import threading
+import queue
 
 from picamera2 import Picamera2
 from picamera2.encoders import MJPEGEncoder, Quality
@@ -36,6 +38,7 @@ class CameraManager:
         _stream_consumers: set of stream consumers
         _frame_update_task: asyncio.Task for frame updates
         _stream_loop: asyncio event loop for streaming
+        _queue_lock: threading.Lock for queue access
     """
     
     def __init__(self, config=None):
@@ -48,6 +51,7 @@ class CameraManager:
         self._stream_consumers = set()
         self._frame_update_task = None
         self._stream_loop = None
+        self._queue_lock = threading.Lock()
 
     async def initialize(self):
         """Initialize the camera and its components."""
@@ -55,10 +59,6 @@ class CameraManager:
             return
             
         try:
-            # Create new event loop for camera operations
-            self._stream_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._stream_loop)
-            
             # Initialize camera
             self.camera = Picamera2()
             self.camera.configure(self.camera.create_preview_configuration(
@@ -66,8 +66,8 @@ class CameraManager:
                 raw={"size": (1536, 864), "format": "SBGGR8"}
             ))
             
-            # Create frame queue and event in the correct event loop context
-            self._frame_queue = asyncio.Queue(maxsize=1)
+            # Create frame queue and event
+            self._frame_queue = queue.Queue(maxsize=1)
             self._frame_available = asyncio.Event()
             
             # Start camera
@@ -88,13 +88,12 @@ class CameraManager:
             raise RobotError("Camera not initialized", "camera_manager")
             
         try:
-            # Ensure we're in the correct event loop context
-            if asyncio.get_event_loop() != self._stream_loop:
-                asyncio.set_event_loop(self._stream_loop)
-                
-            frame = await self._frame_queue.get()
-            self._frame_queue.task_done()
-            return frame
+            with self._queue_lock:
+                if not self._frame_queue.empty():
+                    frame = self._frame_queue.get_nowait()
+                    self._frame_queue.task_done()
+                    return frame
+                return None
         except Exception as e:
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
 
@@ -106,19 +105,19 @@ class CameraManager:
                     await asyncio.sleep(0.1)
                     continue
                     
-                # Ensure we're in the correct event loop context
-                if asyncio.get_event_loop() != self._stream_loop:
-                    asyncio.set_event_loop(self._stream_loop)
-                    
                 # Get frame from camera
                 frame = self.camera.capture_array()
                 if frame is not None:
                     # Put frame in queue
-                    if self._frame_queue.full():
-                        await self._frame_queue.get()
-                        self._frame_queue.task_done()
-                    await self._frame_queue.put(frame)
-                    self._frame_available.set()
+                    with self._queue_lock:
+                        if self._frame_queue.full():
+                            try:
+                                self._frame_queue.get_nowait()
+                                self._frame_queue.task_done()
+                            except queue.Empty:
+                                pass
+                        self._frame_queue.put(frame)
+                        self._frame_available.set()
                     
                 await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
                 
@@ -157,18 +156,19 @@ class CameraManager:
                     await self._frame_update_task
                 except asyncio.CancelledError:
                     pass
-                    
+                
             if self.camera:
                 self.camera.stop()
                 self.camera.close()
                 
+            self._frame_queue = None
+            self._frame_available = None
             self._streaming = False
             self._stream_consumers.clear()
+            self._frame_update_task = None
+            self._stream_loop = None
             
-            if self._stream_loop:
-                self._stream_loop.close()
-                
-            self.logger.info("Camera resources cleaned up successfully")
+            self.logger.info("Camera cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error cleaning up camera: {str(e)}")
+            self.logger.error(f"Error during camera cleanup: {str(e)}")
             raise RobotError(f"Camera cleanup failed: {str(e)}", "camera_manager")
