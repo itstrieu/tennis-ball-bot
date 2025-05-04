@@ -14,7 +14,7 @@ FIN_SPEED = 85
 PWM_FREQ = 10000
 
 # Basic speeds & thresholds
-SPEED = 55
+SPEED = 70
 CENTER_ROTATE_SPEED = 70
 SEARCH_ROTATE_SPEED = 70
 INTER_STEP_PAUSE = 0.2
@@ -28,8 +28,8 @@ MOVEMENT_STEPS = {
     "small_forward": {"method": "move_forward", "speed": int(SPEED), "time": 1},
     "micro_forward": {
         "method": "move_forward",
-        "speed": int(SPEED * 0.6),
-        "time": 0.4,
+        "speed": int(SPEED),
+        "time": 1,
     },
     "step_left": {
         "method": "rotate_left",
