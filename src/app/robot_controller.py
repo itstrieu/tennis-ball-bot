@@ -78,7 +78,7 @@ class RobotController:
                 raise RobotError(f"Emergency stop failed: {str(e)}", "robot_controller")
 
     @with_error_handling("robot_controller")
-    def run(self):
+    async def run(self):
         """Main control loop for the robot."""
         if self.is_running:
             self.logger.warning("Robot is already running")
@@ -97,10 +97,10 @@ class RobotController:
             
             while self.is_running and not self._emergency_stop:
                 # Get frame from camera
-                frame = self.vision.get_frame()
+                frame = await self.vision.get_frame()
                 
                 # Get ball detection data
-                ball_data = self.vision.detect_ball(frame)
+                ball_data = await self.vision.detect_ball(frame)
                 
                 # Update state machine
                 self.state_machine.update(ball_data)

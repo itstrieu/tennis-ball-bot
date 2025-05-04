@@ -47,7 +47,7 @@ class VisionTracker:
             raise RobotError(f"YOLO model loading failed: {str(e)}", "vision_tracker")
 
     @with_error_handling("vision_tracker")
-    def set_camera(self, camera):
+    async def set_camera(self, camera):
         """Set the shared camera instance."""
         if self.model is None:
             raise RobotError("YOLO model not loaded", "vision_tracker")
@@ -55,7 +55,7 @@ class VisionTracker:
         self.camera = camera
         try:
             # Test camera access
-            frame = self.camera.get_frame()
+            frame = await self.camera.get_frame()
             if frame is None:
                 raise RobotError("Failed to capture frame", "vision_tracker")
             self._initialized = True
@@ -65,7 +65,7 @@ class VisionTracker:
             raise RobotError(f"Vision tracker initialization failed: {str(e)}", "vision_tracker")
 
     @with_error_handling("vision_tracker")
-    def get_frame(self):
+    async def get_frame(self):
         """
         Capture a frame from the shared camera.
         
@@ -79,7 +79,7 @@ class VisionTracker:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
             
         try:
-            frame = self.camera.get_frame()
+            frame = await self.camera.get_frame()
             if frame is None:
                 raise RobotError("Failed to capture frame", "vision_tracker")
             return frame
@@ -88,7 +88,7 @@ class VisionTracker:
             raise RobotError(f"Camera access failed: {str(e)}", "vision_tracker")
 
     @with_error_handling("vision_tracker")
-    def detect_ball(self, frame):
+    async def detect_ball(self, frame):
         """
         Run YOLO model, filter for 'tennis_ball', return all detected tennis balls' bounding boxes.
         

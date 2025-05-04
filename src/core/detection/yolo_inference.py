@@ -7,6 +7,7 @@ from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from contextlib import contextmanager
 from config.robot_config import default_config
+import cv2
 
 
 class YOLOInference:

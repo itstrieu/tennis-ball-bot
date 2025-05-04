@@ -73,7 +73,7 @@ class DemoRobot:
             
             # Initialize vision tracker
             self.vision = VisionTracker(config=self.config)
-            self.vision.set_camera(self.camera)
+            await self.vision.set_camera(self.camera)
             
             # Initialize movement decider
             self.decider = MovementDecider(config=self.config)
@@ -98,25 +98,22 @@ class DemoRobot:
             raise RobotError(f"Initialization failed: {str(e)}", "demo_robot")
 
     @with_error_handling("demo_robot")
-    def run(self):
+    async def run(self):
         """Run the robot demo."""
         try:
             # Set up signal handlers
             self._setup_signal_handlers()
             
-            # Initialize components
-            asyncio.run(self.initialize())
-            
-            # Start streaming server in a separate thread
+            # Start streaming server
             self._start_streaming_server()
             
-            # Run the robot
-            self.robot.run()
+            # Run robot controller
+            await self.robot.run()
             
         except Exception as e:
-            self.logger.error(f"Error in demo_robot: {str(e)}")
+            self.logger.error(f"Error running demo: {str(e)}")
             self.cleanup()
-            raise RobotError(f"Demo failed: {str(e)}", "demo_robot")
+            raise RobotError(f"Demo run failed: {str(e)}", "demo_robot")
 
     @with_error_handling("demo_robot")
     def cleanup(self):
@@ -211,7 +208,7 @@ def main():
     demo = DemoRobot()
     
     # Run the robot
-    demo.run()
+    asyncio.run(demo.run())
 
 
 if __name__ == "__main__":
