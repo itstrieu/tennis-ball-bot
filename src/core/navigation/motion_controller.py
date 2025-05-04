@@ -1,9 +1,17 @@
+"""
+motion_controller.py
+
+Controls the robot's motion through GPIO and PWM.
+Manages wheel and fin motors for movement and steering.
+"""
+
 import time
 import logging
 import lgpio
+from typing import Dict, Optional, Literal
 from utils.logger import Logger
-from config.pins import FRONT_LEFT, FRONT_RIGHT, REAR_LEFT, REAR_RIGHT, FINS, STBY
-from config.motion import FIN_PWM_FREQ, PWM_FREQ, SPEED, FIN_SPEED
+from utils.error_handler import with_error_handling, RobotError
+from config.robot_config import default_config
 
 
 class MotionController:
@@ -13,143 +21,266 @@ class MotionController:
 
     You can adjust power balance between left/right wheels using
     `left_scale` and `right_scale` attributes.
+
+    Attributes:
+        config: RobotConfig instance for configuration values
+        speed: Base speed (0-100)
+        left_scale: Left wheel power scaling (1.0 = no change)
+        right_scale: Right wheel power scaling (1.0 = no change)
+        logger: Logger instance
     """
 
-    def __init__(self):
+    def __init__(self, config=None):
         """
-        Initialize the motion controller:
-        - Sets up the logger
-        - Claims GPIO pins
-        - Loads default speed and scaling factors
+        Initialize the motion controller.
+        
+        Args:
+            config: Optional RobotConfig instance
+            
+        Raises:
+            RobotError: If GPIO initialization fails
         """
-        # base speed (0–100)
-        self.speed = SPEED
-        # left/right power scaling (1.0 = no change)
+        self.config = config or default_config
+        self.speed = self.config.speed
         self.left_scale = 1.0
         self.right_scale = 1.0
+        self._is_moving = False
+        self._gpio_handle = None
+        self._pins_claimed = False
 
-        # fin control pins
-        self.L_EN = FINS["L_EN"]
-        self.PWM_L = FINS["PWM_L"]
-        self.PWM_R = FINS["PWM_R"]
-        # standby pin
-        self.stby = STBY
+        # Initialize logger
+        self.logger = Logger(name="motion", log_level=logging.INFO).get_logger()
+        
+        try:
+            self._initialize_gpio()
+        except Exception as e:
+            self.logger.error(f"Failed to initialize GPIO: {str(e)}")
+            raise RobotError(f"GPIO initialization failed: {str(e)}", "motion_controller")
 
-        # logger
-        motion_logger = Logger(name="motion", log_level=logging.INFO)
-        self.logger = motion_logger.get_logger()
-        # open gpio chip
-        self.chip = lgpio.gpiochip_open(0)
+    @with_error_handling("motion_controller")
+    def _initialize_gpio(self):
+        """Initialize GPIO and claim pins."""
+        if self._gpio_handle is None:
+            self._gpio_handle = lgpio.gpiochip_open(0)
+            
+        if not self._pins_claimed:
+            self._claim_output_pins()
+            self._pins_claimed = True
+            
+        self.logger.info("GPIO initialized successfully")
 
-        # motor pin groups
-        self.motors = {
-            "FL": FRONT_LEFT,
-            "FR": FRONT_RIGHT,
-            "RL": REAR_LEFT,
-            "RR": REAR_RIGHT,
-        }
-
-        # movement patterns
-        self.patterns = {
-            "forward": {"FL": -1, "FR": 1, "RL": 1, "RR": -1},
-            "backward": {"FL": 1, "FR": -1, "RL": -1, "RR": 1},
-            "rotate_right": {"FL": -1, "FR": -1, "RL": -1, "RR": -1},
-            "rotate_left": {"FL": 1, "FR": 1, "RL": 1, "RR": 1},
-        }
-
-        self._claim_output_pins()
-
+    @with_error_handling("motion_controller")
     def set_balance(self, left_scale: float, right_scale: float):
         """
-        Adjust power scaling factors for left and right wheels.
-        Values >1.0 boost power; <1.0 reduce.
+        Adjust power balance between left and right wheels.
+        
+        Args:
+            left_scale: Left wheel power scaling (1.0 = no change)
+            right_scale: Right wheel power scaling (1.0 = no change)
         """
-        self.left_scale = left_scale
-        self.right_scale = right_scale
-        self.logger.info(f"Left/right power scales set to {left_scale}/{right_scale}")
+        self.left_scale = max(0.0, min(1.0, left_scale))
+        self.right_scale = max(0.0, min(1.0, right_scale))
+        self.logger.debug(f"Set wheel balance: left={self.left_scale}, right={self.right_scale}")
 
+    @with_error_handling("motion_controller")
     def _apply_scale(self, motor_id: str, duty: float) -> float:
         """
-        Apply left/right scaling to the raw duty.
+        Apply power scaling to motor duty cycle.
+        
+        Args:
+            motor_id: Motor identifier ("left" or "right")
+            duty: Base duty cycle
+            
+        Returns:
+            Scaled duty cycle
         """
-        if motor_id.startswith("L"):
+        if motor_id == "left":
             return duty * self.left_scale
-        else:
-            return duty * self.right_scale
+        return duty * self.right_scale
 
+    @with_error_handling("motion_controller")
     def _claim_output_pins(self):
-        """Claim GPIO pins for all motors, fins, and standby."""
-        for grp in self.motors.values():
-            for pin in grp.values():
-                lgpio.gpio_claim_output(self.chip, pin)
-        lgpio.gpio_claim_output(self.chip, self.stby)
-        lgpio.gpio_claim_output(self.chip, self.L_EN)
-        lgpio.gpio_claim_output(self.chip, self.PWM_L)
-        lgpio.gpio_claim_output(self.chip, self.PWM_R)
+        """Claim and configure GPIO output pins."""
+        if self._gpio_handle is None:
+            raise RobotError("GPIO not initialized", "motion_controller")
+            
+        # Claim and configure pins
+        for pin in self.config.pins.values():
+            lgpio.gpio_claim_output(self._gpio_handle, pin)
+            
+        self.logger.info("Output pins claimed successfully")
 
-    def _set_motor(self, in1, in2, pwm, direction, duty):
-        """Low-level motor control."""
-        # clamp and apply scale
-        duty = max(0, min(100, duty))
-        lgpio.gpio_write(self.chip, in1, 1 if direction > 0 else 0)
-        lgpio.gpio_write(self.chip, in2, 1 if direction < 0 else 0)
-        lgpio.tx_pwm(self.chip, pwm, PWM_FREQ, duty)
+    @with_error_handling("motion_controller")
+    def _set_motor(self, in1: int, in2: int, pwm: int, direction: int, duty: float):
+        """
+        Set motor state and PWM duty cycle.
+        
+        Args:
+            in1: First control pin
+            in2: Second control pin
+            pwm: PWM pin
+            direction: Direction (1 = forward, -1 = backward)
+            duty: PWM duty cycle (0-100)
+        """
+        if self._gpio_handle is None:
+            raise RobotError("GPIO not initialized", "motion_controller")
+            
+        # Set direction
+        lgpio.gpio_write(self._gpio_handle, in1, 1 if direction > 0 else 0)
+        lgpio.gpio_write(self._gpio_handle, in2, 0 if direction > 0 else 1)
+        
+        # Set PWM
+        lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
 
-    def _move_by_pattern(self, pattern, speed=None):
-        """Drive wheels per pattern with optional base speed."""
-        base = speed if speed is not None else self.speed
-        lgpio.gpio_write(self.chip, self.stby, 1)
-        for motor_id, direction in pattern.items():
-            raw_duty = abs(direction) * base
-            scaled = self._apply_scale(motor_id, raw_duty)
-            pins = self.motors[motor_id]
-            self._set_motor(pins["IN1"], pins["IN2"], pins["PWM"], direction, scaled)
+    @with_error_handling("motion_controller")
+    def _move_by_pattern(self, pattern: Dict[str, int], speed: Optional[int] = None):
+        """
+        Move motors according to a pattern.
+        
+        Args:
+            pattern: Dictionary mapping motor IDs to directions
+            speed: Optional speed override
+        """
+        if not self._pins_claimed:
+            self._initialize_gpio()
+            
+        speed = speed or self.speed
+        self._is_moving = True
+        
+        try:
+            for motor_id, direction in pattern.items():
+                pins = self.config.pins[motor_id]
+                duty = self._apply_scale(motor_id, speed)
+                self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, duty)
+                
+            self.logger.debug(f"Moving with pattern: {pattern}, speed: {speed}")
+        except Exception as e:
+            self._is_moving = False
+            raise
 
-    def move_forward(self, speed=None, duration=None):
-        self.logger.info("Moving forward")
-        self._move_by_pattern(self.patterns["forward"], speed)
+    @with_error_handling("motion_controller")
+    def move_forward(self, speed: Optional[int] = None, duration: Optional[float] = None):
+        """Move forward at specified speed for optional duration."""
+        pattern = {
+            "front_left": 1,
+            "front_right": 1,
+            "rear_left": 1,
+            "rear_right": 1
+        }
+        self._move_by_pattern(pattern, speed)
         if duration:
             time.sleep(duration)
             self.stop()
 
-    def move_backward(self, speed=None, duration=None):
-        self.logger.info("Moving backward")
-        self._move_by_pattern(self.patterns["backward"], speed)
+    @with_error_handling("motion_controller")
+    def move_backward(self, speed: Optional[int] = None, duration: Optional[float] = None):
+        """Move backward at specified speed for optional duration."""
+        pattern = {
+            "front_left": -1,
+            "front_right": -1,
+            "rear_left": -1,
+            "rear_right": -1
+        }
+        self._move_by_pattern(pattern, speed)
         if duration:
             time.sleep(duration)
             self.stop()
 
-    def rotate_left(self, speed=None, duration=None):
-        self.logger.info("Rotating left")
-        self._move_by_pattern(self.patterns["rotate_left"], speed)
+    @with_error_handling("motion_controller")
+    def rotate_left(self, speed: Optional[int] = None, duration: Optional[float] = None):
+        """Rotate left at specified speed for optional duration."""
+        pattern = {
+            "front_left": -1,
+            "front_right": 1,
+            "rear_left": -1,
+            "rear_right": 1
+        }
+        self._move_by_pattern(pattern, speed)
         if duration:
             time.sleep(duration)
             self.stop()
 
-    def rotate_right(self, speed=None, duration=None):
-        self.logger.info("Rotating right")
-        self._move_by_pattern(self.patterns["rotate_right"], speed)
+    @with_error_handling("motion_controller")
+    def rotate_right(self, speed: Optional[int] = None, duration: Optional[float] = None):
+        """Rotate right at specified speed for optional duration."""
+        pattern = {
+            "front_left": 1,
+            "front_right": -1,
+            "rear_left": 1,
+            "rear_right": -1
+        }
+        self._move_by_pattern(pattern, speed)
         if duration:
             time.sleep(duration)
             self.stop()
 
-    def stop(self, speed=0, duration=None):
-        """Halt motors and disable driver."""
-        lgpio.gpio_write(self.chip, self.stby, 0)
-        for pins in self.motors.values():
-            lgpio.tx_pwm(self.chip, pins["PWM"], PWM_FREQ, 0)
+    @with_error_handling("motion_controller")
+    def stop(self, speed: int = 0, duration: Optional[float] = None):
+        """Stop all motors."""
+        if self._is_moving:
+            pattern = {
+                "front_left": 0,
+                "front_right": 0,
+                "rear_left": 0,
+                "rear_right": 0
+            }
+            self._move_by_pattern(pattern, speed)
+            self._is_moving = False
+            self.logger.debug("Motors stopped")
+            
+        if duration:
+            time.sleep(duration)
 
-    def fin_on(self, speed=None):
-        duty = speed if speed is not None else FIN_SPEED
-        lgpio.gpio_write(self.chip, self.L_EN, 1)
-        lgpio.tx_pwm(self.chip, self.PWM_L, FIN_PWM_FREQ, 0)
-        lgpio.tx_pwm(self.chip, self.PWM_R, FIN_PWM_FREQ, duty)
+    @with_error_handling("motion_controller")
+    def fin_on(self, speed: Optional[int] = None):
+        """Activate fins at specified speed."""
+        if not self._pins_claimed:
+            self._initialize_gpio()
+            
+        speed = speed or self.config.fin_speed
+        pins = self.config.pins["fins"]
+        
+        try:
+            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 1)
+            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, speed)
+            lgpio.tx_pwm(self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, speed)
+            self.logger.debug(f"Fins activated at speed {speed}")
+        except Exception as e:
+            self.logger.error(f"Failed to activate fins: {str(e)}")
+            raise RobotError(f"Fin activation failed: {str(e)}", "motion_controller")
 
+    @with_error_handling("motion_controller")
     def fin_off(self):
-        lgpio.tx_pwm(self.chip, self.PWM_L, FIN_PWM_FREQ, 0)
-        lgpio.tx_pwm(self.chip, self.PWM_R, FIN_PWM_FREQ, 0)
-        lgpio.gpio_write(self.chip, self.L_EN, 0)
+        """Deactivate fins."""
+        if not self._pins_claimed:
+            return
+            
+        pins = self.config.pins["fins"]
+        
+        try:
+            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 0)
+            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, 0)
+            lgpio.tx_pwm(self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, 0)
+            self.logger.debug("Fins deactivated")
+        except Exception as e:
+            self.logger.error(f"Failed to deactivate fins: {str(e)}")
+            raise RobotError(f"Fin deactivation failed: {str(e)}", "motion_controller")
 
+    @with_error_handling("motion_controller")
     def cleanup(self):
-        self.stop()
-        lgpio.gpiochip_close(self.chip)
+        """Clean up GPIO resources."""
+        if self._gpio_handle is not None:
+            try:
+                self.stop()
+                self.fin_off()
+                lgpio.gpiochip_close(self._gpio_handle)
+                self._gpio_handle = None
+                self._pins_claimed = False
+                self.logger.info("GPIO resources cleaned up")
+            except Exception as e:
+                self.logger.error(f"Error during cleanup: {str(e)}")
+                raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
+
+    def __del__(self):
+        """Ensure cleanup on object destruction."""
+        self.cleanup()

@@ -1,72 +1,158 @@
 # src/core/detection/vision_tracker.py
 from .yolo_inference import YOLOInference
-from src.config import vision as vision_config
 from utils.logger import Logger
+from utils.error_handler import with_error_handling, RobotError
+from config.robot_config import default_config
 import logging
 
 
 class VisionTracker:
-    def __init__(self, model_path, frame_width, camera, camera_offset=0):
+    """
+    Tracks tennis balls using YOLO model and camera input.
+    
+    Attributes:
+        model: YOLOInference instance for object detection
+        frame_width: Width of the camera frame
+        camera_offset: Offset of the camera's center
+        conf_threshold: Confidence threshold for detections
+        camera: Shared camera instance
+        logger: Logger instance
+    """
+    
+    def __init__(self, config=None):
         """
-        Initialize vision tracker with model, camera, and parameters.
-
-        Arguments:
-        - model_path: path to the YOLO model
-        - frame_width: width of the frame for the camera
-        - camera: the shared camera instance
-        - camera_offset: offset of the camera's center, default 0
+        Initialize vision tracker with configuration.
+        
+        Args:
+            config: Optional RobotConfig instance
         """
-        self.model = YOLOInference(model_path)
-        self.frame_width = frame_width
-        self.camera_offset = camera_offset
-        self.conf_threshold = vision_config.CONFIDENCE_THRESHOLD
+        self.config = config or default_config
+        self.model = YOLOInference(self.config.vision_model_path)
+        self.frame_width = self.config.frame_width
+        self.camera_offset = self.config.camera_offset
+        self.conf_threshold = self.config.confidence_threshold
+        self._is_initialized = False
+        self.camera = None  # Will be set by set_camera
+        self.logger = Logger(name="vision", log_level=logging.INFO).get_logger()
 
-        self.camera = camera  # Use the shared camera instance
+    @with_error_handling("vision_tracker")
+    def set_camera(self, camera):
+        """Set the shared camera instance."""
+        self.camera = camera
+        try:
+            # Test camera access
+            self.get_frame()
+            self._is_initialized = True
+            self.logger.info("Vision tracker initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize vision tracker: {str(e)}")
+            raise RobotError(f"Vision tracker initialization failed: {str(e)}", "vision_tracker")
 
-        self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
-
+    @with_error_handling("vision_tracker")
     def get_frame(self):
         """
         Capture a frame from the shared camera.
+        
+        Returns:
+            np.ndarray: The captured frame
+            
+        Raises:
+            RobotError: If camera access fails
         """
-        return self.camera.capture_array()
+        if not self._is_initialized:
+            raise RobotError("Vision tracker not initialized", "vision_tracker")
+            
+        try:
+            frame = self.camera.capture_array()
+            if frame is None:
+                raise RobotError("Failed to capture frame", "vision_tracker")
+            return frame
+        except Exception as e:
+            self.logger.error(f"Error capturing frame: {str(e)}")
+            raise RobotError(f"Camera access failed: {str(e)}", "vision_tracker")
 
+    @with_error_handling("vision_tracker")
     def detect_ball(self, frame):
         """
         Run YOLO model, filter for 'tennis_ball', return all detected tennis balls' bounding boxes.
+        
+        Args:
+            frame: Input frame to process
+            
+        Returns:
+            List of bounding boxes for detected tennis balls
+            
+        Raises:
+            RobotError: If detection fails
         """
-        predictions = self.model.predict(frame)
+        if not self._is_initialized:
+            raise RobotError("Vision tracker not initialized", "vision_tracker")
+            
+        try:
+            predictions = self.model.predict(frame)
 
-        # Extract only tennis balls and filter based on confidence threshold
-        tennis_balls = [
-            (bbox, conf, label)
-            for (bbox, conf, label) in predictions
-            if label.lower() == "tennis_ball" and conf >= self.conf_threshold
-        ]
+            # Extract only tennis balls and filter based on confidence threshold
+            tennis_balls = [
+                (bbox, conf, label)
+                for (bbox, conf, label) in predictions
+                if label.lower() == "tennis_ball" and conf >= self.conf_threshold
+            ]
 
-        self.logger.debug(f"[DEBUG] Raw predictions: {len(predictions)}")
-        self.logger.debug(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
+            self.logger.debug(f"[DEBUG] Raw predictions: {len(predictions)}")
+            self.logger.debug(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
 
-        # If no tennis balls are detected, return an empty list
-        if not tennis_balls:
-            return []
+            # If no tennis balls are detected, return an empty list
+            if not tennis_balls:
+                return []
 
-        # Return the list of bounding boxes for tennis balls
-        return [bbox for (bbox, conf, label) in tennis_balls]
+            # Return the list of bounding boxes for tennis balls
+            return [bbox for (bbox, conf, label) in tennis_balls]
+        except Exception as e:
+            self.logger.error(f"Error during ball detection: {str(e)}")
+            raise RobotError(f"Ball detection failed: {str(e)}", "vision_tracker")
 
+    @with_error_handling("vision_tracker")
     def calculate_area(self, bbox):
         """
         Calculates the area of the bounding box.
+        
+        Args:
+            bbox: Bounding box tuple (x, y, w, h)
+            
+        Returns:
+            float: Area of the bounding box
         """
         x, y, w, h = bbox
         return w * h
 
+    @with_error_handling("vision_tracker")
     def get_center_offset(self, bbox):
         """
         Returns how far the object is from the robot's centerline (in pixels).
         Positive → object is to the right of center, negative → left.
+        
+        Args:
+            bbox: Bounding box tuple (x, y, w, h)
+            
+        Returns:
+            float: Offset from center in pixels
         """
         x, _, w, _ = bbox
         bbox_center_x = x + (w / 2)
         adjusted_center = bbox_center_x - self.camera_offset
         return adjusted_center - (self.frame_width / 2)
+        
+    @with_error_handling("vision_tracker")
+    def cleanup(self):
+        """Clean up resources used by the vision tracker."""
+        if not self._is_initialized:
+            return
+            
+        try:
+            if hasattr(self.model, 'cleanup'):
+                self.model.cleanup()
+            self._is_initialized = False
+            self.logger.info("Vision tracker cleaned up successfully")
+        except Exception as e:
+            self.logger.error(f"Error during vision tracker cleanup: {str(e)}")
+            raise RobotError(f"Vision tracker cleanup failed: {str(e)}", "vision_tracker")

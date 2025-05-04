@@ -5,6 +5,12 @@
 # Change to the script's directory
 cd "$(dirname "$0")" || exit 1
 
+# Check if virtual environment exists
+if [ ! -d "pi-yolo" ]; then
+    echo "[ERROR] Virtual environment 'pi-yolo' not found"
+    exit 1
+fi
+
 # Activate virtual environment
 source pi-yolo/bin/activate
 
@@ -13,10 +19,12 @@ cleanup() {
   echo "[INFO] Cleaning up camera processes..."
   # Terminate any picamera2 processes
   local pids
-  if pids=$(pgrep -f picamera2); then
-    echo "[INFO] Stopping camera processes: $pids"
+  if pids=$(pgrep -f "python.*demo_robot.py"); then
+    echo "[INFO] Stopping demo processes: $pids"
     kill $pids 2>/dev/null
   fi
+  # Give processes time to clean up
+  sleep 1
 }
 
 # Ensure cleanup runs on exit or interruption
