@@ -67,7 +67,7 @@ class CameraManager:
             ))
             
             # Create frame queue and event
-            self._frame_queue = queue.Queue(maxsize=1)
+            self._frame_queue = asyncio.Queue(maxsize=1)
             self._frame_available = asyncio.Event()
             
             # Start camera
@@ -88,11 +88,12 @@ class CameraManager:
             raise RobotError("Camera not initialized", "camera_manager")
             
         try:
-            with self._queue_lock:
-                if not self._frame_queue.empty():
-                    frame = self._frame_queue.get_nowait()
-                    self._frame_queue.task_done()
-                    return frame
+            # Wait for a frame with timeout
+            try:
+                frame = await asyncio.wait_for(self._frame_queue.get(), timeout=1.0)
+                self._frame_queue.task_done()
+                return frame
+            except asyncio.TimeoutError:
                 return None
         except Exception as e:
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
@@ -109,15 +110,14 @@ class CameraManager:
                 frame = self.camera.capture_array()
                 if frame is not None:
                     # Put frame in queue
-                    with self._queue_lock:
+                    try:
                         if self._frame_queue.full():
-                            try:
-                                self._frame_queue.get_nowait()
-                                self._frame_queue.task_done()
-                            except queue.Empty:
-                                pass
-                        self._frame_queue.put(frame)
+                            await self._frame_queue.get()
+                            self._frame_queue.task_done()
+                        await self._frame_queue.put(frame)
                         self._frame_available.set()
+                    except Exception as e:
+                        self.logger.error(f"Error updating frame queue: {str(e)}")
                     
                 await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
                 
