@@ -37,14 +37,27 @@ class VisionTracker:
         self.frame_width = self.config.frame_width
         self.camera_offset = self.config.camera_offset
         self.conf_threshold = self.config.confidence_threshold
+        
+        # Load YOLO model
+        try:
+            self.model = YOLOInference(self.config.vision_model_path, config=self.config)
+            self.logger.info("YOLO model loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to load YOLO model: {str(e)}")
+            raise RobotError(f"YOLO model loading failed: {str(e)}", "vision_tracker")
 
     @with_error_handling("vision_tracker")
     def set_camera(self, camera):
         """Set the shared camera instance."""
+        if self.model is None:
+            raise RobotError("YOLO model not loaded", "vision_tracker")
+            
         self.camera = camera
         try:
             # Test camera access
-            self.get_frame()
+            frame = self.camera.capture_array()
+            if frame is None:
+                raise RobotError("Failed to capture frame", "vision_tracker")
             self._initialized = True
             self.logger.info("Vision tracker initialized successfully")
         except Exception as e:
