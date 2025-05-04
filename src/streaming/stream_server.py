@@ -11,6 +11,7 @@ import logging
 from threading import Condition
 from contextlib import asynccontextmanager
 from typing import Optional, Set
+import time
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
@@ -43,7 +44,7 @@ class StreamServer:
         self.camera = None
         self.vision = None
         self.app = FastAPI()
-        self.jpeg_stream = JpegStream()
+        self.jpeg_stream = JpegStream(self.config)
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
@@ -201,6 +202,12 @@ class StreamServer:
                 raise RobotError("Camera not available", "stream_server")
                 
             try:
+                # Verify camera is ready
+                test_frame = self.camera.get_frame()
+                if test_frame is None:
+                    raise RobotError("Camera not capturing frames", "stream_server")
+                    
+                # Start the stream
                 await self.jpeg_stream.start()
                 return {"status": "streaming"}
             except Exception as e:
@@ -222,17 +229,35 @@ class StreamServer:
         @with_error_handling("stream_server")
         async def websocket_endpoint(ws: WebSocket):
             """Handle WebSocket connections for video streaming."""
-            await ws.accept()
-            self.jpeg_stream.connections.add(ws)
-            
             try:
+                await ws.accept()
+                self.jpeg_stream.connections.add(ws)
+                
+                # Wait for stream to start
+                while not self.jpeg_stream.active:
+                    await asyncio.sleep(0.1)
+                
+                # Keep connection alive and handle frames
                 while True:
-                    frame = await self.jpeg_stream.output.read()
-                    await ws.send_bytes(frame)
+                    try:
+                        # Send ping to keep connection alive
+                        await ws.send_json({"type": "ping"})
+                        
+                        # Wait for next frame
+                        frame = await self.jpeg_stream.output.read()
+                        await ws.send_bytes(frame)
+                        
+                        # Control frame rate
+                        await asyncio.sleep(self.jpeg_stream.frame_interval)
+                    except Exception as e:
+                        self.logger.error(f"WebSocket error: {str(e)}")
+                        break
             except Exception as e:
-                self.logger.error(f"WebSocket error: {str(e)}")
+                self.logger.error(f"WebSocket connection error: {str(e)}")
             finally:
-                self.jpeg_stream.connections.remove(ws)
+                self.jpeg_stream.connections.discard(ws)
+                if not self.jpeg_stream.connections:
+                    await self.jpeg_stream.stop()
 
     @with_error_handling("stream_server")
     async def start(self, host="0.0.0.0", port=8000):
@@ -284,12 +309,19 @@ class StreamingOutput(io.BufferedIOBase):
 class JpegStream:
     """Manages JPEG encoding and streaming of video frames."""
     
-    def __init__(self):
+    def __init__(self, config=None):
+        self.config = config or default_config
         self.active = False
         self.connections = set()
         self.task = None
         self.output = StreamingOutput()
-        self.encoder = MJPEGEncoder()
+        self.encoder = MJPEGEncoder(quality=self.config.streaming_quality)
+        self.frame_timeout = 2.0  # 2 second timeout for frame capture
+        self.target_fps = self.config.streaming_fps
+        self.frame_interval = 1.0 / self.target_fps
+        self.last_frame_time = 0
+        self.frame_buffer = asyncio.Queue(maxsize=self.config.frame_buffer_size)
+        self.logger = Logger.get_logger(name="stream", log_level=logging.INFO)
 
     async def start(self):
         """Start the JPEG stream."""
@@ -314,12 +346,39 @@ class JpegStream:
         """Stream frames to connected clients."""
         while self.active:
             try:
-                frame = await self.output.read()
-                for ws in self.connections:
+                current_time = time.time()
+                if current_time - self.last_frame_time < self.frame_interval:
+                    await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+                    continue
+
+                # Use wait_for to handle frame capture timeouts
+                frame = await asyncio.wait_for(self.output.read(), timeout=self.frame_timeout)
+                self.last_frame_time = current_time
+                
+                # Add frame to buffer
+                try:
+                    self.frame_buffer.put_nowait(frame)
+                except asyncio.QueueFull:
+                    # If buffer is full, remove oldest frame
                     try:
-                        await ws.send_bytes(frame)
-                    except Exception:
-                        self.connections.remove(ws)
+                        await self.frame_buffer.get()
+                        await self.frame_buffer.put(frame)
+                    except Exception as e:
+                        self.logger.error(f"Error managing frame buffer: {str(e)}")
+                
+                # Send buffered frames to clients
+                while not self.frame_buffer.empty():
+                    buffered_frame = await self.frame_buffer.get()
+                    for ws in list(self.connections):  # Create a copy of connections to avoid modification during iteration
+                        try:
+                            await ws.send_bytes(buffered_frame)
+                        except Exception as e:
+                            self.logger.error(f"Error sending frame to client: {str(e)}")
+                            self.connections.discard(ws)
+                            
+            except asyncio.TimeoutError:
+                self.logger.warning("Frame capture timed out, retrying...")
+                await asyncio.sleep(0.1)
             except Exception as e:
                 self.logger.error(f"Error streaming frame: {str(e)}")
                 await asyncio.sleep(0.1)

@@ -7,6 +7,8 @@ Handles initialization, frame capture, and cleanup of camera resources.
 """
 
 import logging
+import asyncio
+import time
 from typing import Optional
 from picamera2 import Picamera2
 from utils.logger import Logger
@@ -29,6 +31,12 @@ class CameraManager:
         self.logger = Logger.get_logger(name="camera", log_level=logging.INFO)
         self.camera = None
         self._initialized = False
+        self._frame_lock = asyncio.Lock()
+        self._frame_buffer = None
+        self._frame_available = asyncio.Event()
+        self._update_task = None
+        self._last_frame_time = 0
+        self._frame_interval = 1.0 / self.config.target_fps
 
     @with_error_handling("camera_manager")
     def initialize(self) -> None:
@@ -45,19 +53,43 @@ class CameraManager:
                 )
             )
             self.camera.start()
+            self._initialized = True
+            self._update_task = asyncio.create_task(self._update_frame())
             self.logger.info("Camera initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize camera: {str(e)}")
             raise RobotError(f"Camera initialization failed: {str(e)}", "camera_manager")
 
+    async def _update_frame(self):
+        """Update the frame buffer in a separate task."""
+        while self._initialized:
+            try:
+                current_time = time.time()
+                if current_time - self._last_frame_time < self._frame_interval:
+                    await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+                    continue
+
+                async with self._frame_lock:
+                    self._frame_buffer = self.camera.capture_array()
+                    self._frame_available.set()
+                self._last_frame_time = current_time
+                await asyncio.sleep(self._frame_interval)
+            except Exception as e:
+                self.logger.error(f"Error updating frame: {str(e)}")
+                await asyncio.sleep(0.1)
+
     @with_error_handling("camera_manager")
-    def get_frame(self):
-        """Get a frame from the camera."""
-        if self.camera is None:
+    async def get_frame(self):
+        """Get a frame from the camera with proper synchronization."""
+        if not self._initialized:
             self.initialize()
             
         try:
-            return self.camera.capture_array()
+            await self._frame_available.wait()
+            async with self._frame_lock:
+                frame = self._frame_buffer
+                self._frame_available.clear()
+                return frame
         except Exception as e:
             self.logger.error(f"Failed to capture frame: {str(e)}")
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
@@ -67,6 +99,9 @@ class CameraManager:
         """Clean up camera resources."""
         if self.camera is not None:
             try:
+                self._initialized = False
+                if self._update_task:
+                    self._update_task.cancel()
                 self.camera.stop()
                 self.camera.close()
                 self.camera = None

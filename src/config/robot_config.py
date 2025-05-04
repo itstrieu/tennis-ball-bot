@@ -60,6 +60,13 @@ class RobotConfig:
     # Dev‐only slowdown factor (optional)
     dev_slowdown: float = 2
     
+    # === Streaming Configuration ===
+    streaming_fps: int = 30
+    streaming_quality: int = 85  # JPEG quality (0-100)
+    max_bandwidth: int = 1000000  # 1 Mbps
+    target_fps: int = 30  # Target frame rate for camera
+    frame_buffer_size: int = 2  # Number of frames to buffer
+    
     # === GPIO Configuration ===
     pins: Dict[str, Dict[str, int]] = None
     
