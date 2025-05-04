@@ -250,7 +250,7 @@ class StreamServer:
                         await self.camera.start_streaming()
                     
                     # Create encoder for this connection
-                    encoder = MJPEGEncoder(quality=80)
+                    encoder = MJPEGEncoder()
                     output = FileOutput()
                     encoder.output = output
                     
@@ -279,7 +279,10 @@ class StreamServer:
                     
             except Exception as e:
                 self.logger.error(f"WebSocket error: {str(e)}")
-                await websocket.close()
+                try:
+                    await websocket.close()
+                except Exception as close_error:
+                    self.logger.debug(f"Error closing WebSocket: {str(close_error)}")
                 raise
 
     @with_error_handling("stream_server")
