@@ -65,6 +65,14 @@ class MotionController:
             self._claim_output_pins()
             self._pins_claimed = True
             
+        # Enable motor driver by setting standby pin to 1
+        standby_pin = self.config.pins["standby"]
+        result = lgpio.gpio_write(self._gpio_handle, standby_pin, 1)
+        if result < 0:
+            self.logger.error(f"Failed to enable motor driver (standby pin): {result}")
+        else:
+            self.logger.info("Motor driver enabled (standby pin set to 1)")
+            
         self.logger.info("GPIO initialized successfully")
 
     @with_error_handling("motion_controller")
@@ -175,11 +183,12 @@ class MotionController:
         
         try:
             # Enable motor driver
-            result = lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 1)
+            standby_pin = self.config.pins["standby"]
+            result = lgpio.gpio_write(self._gpio_handle, standby_pin, 1)
             if result < 0:
                 self.logger.error(f"Failed to enable motor driver (standby pin): {result}")
-            else:
-                self.logger.debug("Motor driver enabled (standby pin set to 1)")
+                raise RobotError("Failed to enable motor driver", "motion_controller")
+            self.logger.debug("Motor driver enabled (standby pin set to 1)")
             
             for motor_id, direction in pattern.items():
                 pins = self.config.pins[motor_id]
@@ -189,6 +198,8 @@ class MotionController:
             self.logger.debug(f"Moving with pattern: {pattern}, speed: {speed}")
         except Exception as e:
             self._is_moving = False
+            # Ensure motor driver is disabled on error
+            self._disable_motor_driver()
             raise
 
     @with_error_handling("motion_controller")
@@ -251,19 +262,32 @@ class MotionController:
     def stop(self, speed: int = 0, duration: Optional[float] = None):
         """Stop all motors."""
         if self._is_moving:
-            # Disable motor driver
-            lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 0)
-            
-            # Set all motors to stop
+            # First stop all motors
             for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
                 pins = self.config.pins[motor_id]
                 lgpio.tx_pwm(self._gpio_handle, pins["pwm"], self.config.pwm_freq, 0)
+            
+            # Then disable motor driver
+            self._disable_motor_driver()
             
             self._is_moving = False
             self.logger.debug("Motors stopped")
             
         if duration:
             time.sleep(duration)
+
+    @with_error_handling("motion_controller")
+    def _disable_motor_driver(self):
+        """Disable motor driver by setting standby pin to 0."""
+        if self._gpio_handle is None:
+            return
+            
+        standby_pin = self.config.pins["standby"]
+        result = lgpio.gpio_write(self._gpio_handle, standby_pin, 0)
+        if result < 0:
+            self.logger.error(f"Failed to disable motor driver (standby pin): {result}")
+        else:
+            self.logger.debug("Motor driver disabled (standby pin set to 0)")
 
     @with_error_handling("motion_controller")
     def fin_on(self, speed: Optional[int] = None):
