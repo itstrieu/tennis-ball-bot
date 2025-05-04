@@ -34,17 +34,16 @@ class CameraManager:
         self._initialized = False
         self._frame_lock = asyncio.Lock()
         self._frame_buffer = None
+        # Create a new event loop for this instance
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        # Create the event in the current loop
         self._frame_available = asyncio.Event()
         self._update_task = None
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
         self._streaming = False
         self._stream_consumers = set()
-        # Create a new event loop for this instance
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        # Create the event in the correct loop
-        self._frame_available = asyncio.Event(loop=self._loop)
 
     @with_error_handling("camera_manager")
     def start(self) -> None:
