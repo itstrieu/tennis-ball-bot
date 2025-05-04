@@ -116,7 +116,7 @@ class DemoRobot:
             raise RobotError(f"Demo run failed: {str(e)}", "demo_robot")
 
     @with_error_handling("demo_robot")
-    def cleanup(self):
+    async def cleanup(self):
         """Clean up all resources."""
         if self._cleanup_complete:
             return
@@ -130,8 +130,8 @@ class DemoRobot:
             # Stop camera and streaming
             if self.stream_server:
                 try:
-                    # Use the current event loop instead of creating a new one
-                    asyncio.get_event_loop().run_until_complete(self.stream_server.stop())
+                    # Use the current event loop
+                    await self.stream_server.stop()
                 except Exception as e:
                     self.logger.error(f"Error stopping stream server: {str(e)}")
                 finally:
@@ -167,11 +167,18 @@ class DemoRobot:
             return
             
         try:
-            # Use the current event loop instead of creating a new one
-            self._server_thread = Thread(
-                target=lambda: asyncio.get_event_loop().run_until_complete(self.stream_server.start()),
-                daemon=True
-            )
+            # Create a new event loop for the server thread
+            def run_server():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self.stream_server.start())
+                except Exception as e:
+                    self.logger.error(f"Error in streaming server thread: {str(e)}")
+                finally:
+                    loop.close()
+                    
+            self._server_thread = Thread(target=run_server, daemon=True)
             self._server_thread.start()
             self.logger.info("Streaming server started")
         except Exception as e:
@@ -213,7 +220,11 @@ def main():
         # Initialize and run the robot using the same event loop
         loop.run_until_complete(demo.initialize())
         loop.run_until_complete(demo.run())
+    except Exception as e:
+        Logger.get_logger(name="main", log_level=logging.ERROR).error(f"Error in main: {str(e)}")
     finally:
+        # Ensure cleanup runs in the main event loop
+        loop.run_until_complete(demo.cleanup())
         loop.close()
 
 

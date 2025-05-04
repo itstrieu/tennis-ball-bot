@@ -228,6 +228,44 @@ class StreamServer:
                 self.logger.error(f"Failed to stop stream: {str(e)}")
                 raise RobotError(f"Stream stop failed: {str(e)}", "stream_server")
 
+        @self.app.websocket("/ws")
+        @with_error_handling("stream_server")
+        async def websocket_endpoint(websocket: WebSocket):
+            """Handle WebSocket connections for streaming."""
+            await websocket.accept()
+            try:
+                # Register as a stream consumer
+                stream_condition = await self.camera.register_stream_consumer()
+                self._stream_consumers.add(asyncio.current_task())
+                
+                while True:
+                    try:
+                        # Wait for new frame
+                        async with stream_condition:
+                            await stream_condition.wait()
+                        
+                        # Get frame and encode as JPEG using picamera2
+                        frame = await self.camera.get_frame()
+                        if frame is not None:
+                            # Create a temporary encoder for this frame
+                            encoder = MJPEGEncoder(quality=80)
+                            output = FileOutput()
+                            encoder.output = output
+                            
+                            # Encode the frame
+                            encoder.encode(frame)
+                            await websocket.send_bytes(output.getvalue())
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        self.logger.error(f"Error in WebSocket stream: {str(e)}")
+                        break
+            finally:
+                # Clean up
+                await self.camera.unregister_stream_consumer()
+                self._stream_consumers.discard(asyncio.current_task())
+                await websocket.close()
+
     @with_error_handling("stream_server")
     async def start(self, host="0.0.0.0", port=8000):
         """Start the streaming server."""
@@ -268,41 +306,3 @@ class StreamServer:
         except Exception as e:
             self.logger.error(f"Error stopping stream server: {str(e)}")
             raise RobotError(f"Stream server stop failed: {str(e)}", "stream_server")
-
-    @self.app.websocket("/ws")
-    @with_error_handling("stream_server")
-    async def websocket_endpoint(websocket: WebSocket):
-        """Handle WebSocket connections for streaming."""
-        await websocket.accept()
-        try:
-            # Register as a stream consumer
-            stream_condition = await self.camera.register_stream_consumer()
-            self._stream_consumers.add(asyncio.current_task())
-            
-            while True:
-                try:
-                    # Wait for new frame
-                    async with stream_condition:
-                        await stream_condition.wait()
-                    
-                    # Get frame and encode as JPEG using picamera2
-                    frame = await self.camera.get_frame()
-                    if frame is not None:
-                        # Create a temporary encoder for this frame
-                        encoder = MJPEGEncoder(quality=80)
-                        output = FileOutput()
-                        encoder.output = output
-                        
-                        # Encode the frame
-                        encoder.encode(frame)
-                        await websocket.send_bytes(output.getvalue())
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    self.logger.error(f"Error in WebSocket stream: {str(e)}")
-                    break
-        finally:
-            # Clean up
-            await self.camera.unregister_stream_consumer()
-            self._stream_consumers.discard(asyncio.current_task())
-            await websocket.close()
