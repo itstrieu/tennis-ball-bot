@@ -189,11 +189,19 @@ class RobotController:
     async def initialize(self):
         """Initialize the robot controller components."""
         try:
-            # Verify motor control before starting
-            self.motion.verify_motor_control()
+            # Initialize vision tracker first (loads YOLO model)
+            await self.vision.initialize()
             
-            # Activate fins at start
+            # Initialize movement decider
+            await self.decider.initialize()
+            
+            # Verify motor control and activate fins
+            self.motion.verify_motor_control()
             self.motion.fin_on()
+            
+            # Set up camera in vision tracker
+            if hasattr(self, 'camera') and self.camera is not None:
+                await self.vision.set_camera(self.camera)
             
             self._initialized = True
             self.logger.info("Robot controller initialized successfully")

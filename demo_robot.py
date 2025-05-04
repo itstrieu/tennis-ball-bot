@@ -75,6 +75,7 @@ class DemoRobot:
             self.logger.info("Initializing camera...")
             self.camera = CameraManager(self.config)
             await self.camera.initialize()
+            await self.camera.start_streaming()  # Start camera streaming
             
             # Initialize motion controller
             self.logger.info("Initializing motion controller...")
