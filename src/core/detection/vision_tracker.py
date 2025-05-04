@@ -79,7 +79,7 @@ class VisionTracker:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
             
         try:
-            frame = self.camera.capture_array()
+            frame = self.camera.get_frame()
             if frame is None:
                 raise RobotError("Failed to capture frame", "vision_tracker")
             return frame
