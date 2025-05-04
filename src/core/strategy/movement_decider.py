@@ -31,6 +31,25 @@ class MovementDecider:
         self.last_area = 0  # Area of last seen ball
         self.last_seen_valid = False  # True only if the ball was seen in the previous frame
         self.max_no_ball_count = self.config.max_no_ball  # Use max_no_ball from config
+        self._initialized = False
+
+    async def initialize(self):
+        """Initialize the movement decider components."""
+        try:
+            self._initialized = True
+            self.logger.info("Movement decider initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize movement decider: {str(e)}")
+            raise RobotError(f"Movement decider initialization failed: {str(e)}", "movement_decider")
+
+    async def cleanup(self):
+        """Clean up resources used by the movement decider."""
+        try:
+            self._initialized = False
+            self.logger.info("Movement decider cleaned up successfully")
+        except Exception as e:
+            self.logger.error(f"Error during movement decider cleanup: {str(e)}")
+            raise RobotError(f"Movement decider cleanup failed: {str(e)}", "movement_decider")
 
     @with_error_handling("movement_decider")
     def decide(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> str:
