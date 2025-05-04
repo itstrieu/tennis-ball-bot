@@ -271,7 +271,10 @@ class StreamServer:
                         ret, jpeg = cv2.imencode('.jpg', frame)
                         if not ret:
                             continue
-                        await websocket.send_bytes(jpeg.tobytes())
+                        try:
+                            await websocket.send_bytes(jpeg.tobytes())
+                        except WebSocketDisconnect:
+                            break
                         
                         # Small sleep to prevent CPU hogging
                         await asyncio.sleep(0.001)
@@ -286,7 +289,10 @@ class StreamServer:
                     await self.camera.unregister_stream_consumer()
                     if not self.camera._stream_consumers:
                         await self.camera.stop_streaming()
-                    await websocket.close()
+                    try:
+                        await websocket.close()
+                    except:
+                        pass
                     
             except Exception as e:
                 self.logger.error(f"WebSocket error: {str(e)}")
