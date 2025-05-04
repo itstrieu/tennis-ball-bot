@@ -51,8 +51,8 @@ class MotionController:
 
         # movement patterns
         self.patterns = {
-            "forward": {"FL": 1, "FR": -1, "RL": 1, "RR": -1},
-            "backward": {"FL": -1, "FR": 1, "RL": -1, "RR": 1},
+            "forward": {"FL": -1, "FR": 1, "RL": 1, "RR": -1},
+            "backward": {"FL": 1, "FR": -1, "RL": -1, "RR": 1},
             "rotate_right": {"FL": -1, "FR": -1, "RL": -1, "RR": -1},
             "rotate_left": {"FL": 1, "FR": 1, "RL": 1, "RR": 1},
         }
