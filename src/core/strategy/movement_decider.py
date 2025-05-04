@@ -30,7 +30,7 @@ class MovementDecider:
         self.no_ball_count = 0  # Tracks how many consecutive frames had no ball
         self.last_area = 0  # Area of last seen ball
         self.last_seen_valid = False  # True only if the ball was seen in the previous frame
-        self.max_no_ball_count = self.config.max_no_ball_count
+        self.max_no_ball_count = self.config.max_no_ball  # Use max_no_ball from config
 
     @with_error_handling("movement_decider")
     def decide(self, offset: Optional[float], area: float) -> str:
