@@ -90,8 +90,11 @@ class RobotController:
         
         try:
             while self.is_running and not self._emergency_stop:
+                # Get frame from camera
+                frame = self.vision.get_frame()
+                
                 # Get ball detection data
-                ball_data = self.vision.detect_ball()
+                ball_data = self.vision.detect_ball(frame)
                 
                 # Update state machine
                 self.state_machine.update(ball_data)
@@ -156,7 +159,8 @@ class RobotController:
             self.motion.stop()
             
             # Cleanup camera
-            CameraManager.cleanup()
+            if hasattr(self, 'vision') and self.vision is not None:
+                self.vision.cleanup()
             
             self._cleanup_complete = True
             self.logger.info("Cleanup completed successfully")
