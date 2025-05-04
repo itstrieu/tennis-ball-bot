@@ -47,6 +47,7 @@ class RobotController:
         self._emergency_stop = False
         self._cleanup_complete = False
         self.logger = Logger.get_logger(name="robot", log_level=logging.INFO)
+        self._initialized = False
         
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -57,7 +58,7 @@ class RobotController:
         self.emergency_stop()
 
     @with_error_handling("robot_controller")
-    def emergency_stop(self):
+    async def emergency_stop(self):
         """Immediately stop all robot motion and cleanup resources."""
         if not self._cleanup_complete:
             self._emergency_stop = True
@@ -69,7 +70,7 @@ class RobotController:
                 self.motion.stop()
                 
                 # Cleanup resources
-                self.cleanup(force=True)
+                await self.cleanup(force=True)
                 
                 self._cleanup_complete = True
                 self.logger.info("Emergency stop completed")
@@ -80,6 +81,9 @@ class RobotController:
     @with_error_handling("robot_controller")
     async def run(self):
         """Main control loop for the robot."""
+        if not self._initialized:
+            raise RobotError("Robot controller not initialized", "robot_controller")
+            
         if self.is_running:
             self.logger.warning("Robot is already running")
             return
@@ -89,10 +93,8 @@ class RobotController:
         self._cleanup_complete = False
         
         try:
-            # Verify motor control before starting
+            # Verify motor control and fins are active before starting main loop
             self.motion.verify_motor_control()
-            
-            # Activate fins at start
             self.motion.fin_on()
             
             while self.is_running and not self._emergency_stop:
@@ -118,7 +120,7 @@ class RobotController:
             self.emergency_stop()
             raise RobotError(f"Control loop failed: {str(e)}", "robot_controller")
         finally:
-            self.cleanup()
+            await self.cleanup()
 
     @with_error_handling("robot_controller")
     def execute_motion(self, action: str):
@@ -149,7 +151,7 @@ class RobotController:
             raise RobotError(f"Motion execution failed: {str(e)}", "robot_controller")
 
     @with_error_handling("robot_controller")
-    def cleanup(self, force: bool = False):
+    async def cleanup(self, force: bool = False):
         """Cleanup resources and stop the robot."""
         if not force and self._cleanup_complete:
             return
@@ -163,12 +165,28 @@ class RobotController:
             
             # Cleanup camera
             if hasattr(self, 'vision') and self.vision is not None:
-                self.vision.cleanup()
+                await self.vision.cleanup()
             
             self._cleanup_complete = True
+            self._initialized = False
             self.logger.info("Cleanup completed successfully")
             
         except Exception as e:
             self.logger.error(f"Error during cleanup: {str(e)}")
             if force:
                 raise RobotError(f"Cleanup failed: {str(e)}", "robot_controller")
+
+    async def initialize(self):
+        """Initialize the robot controller components."""
+        try:
+            # Verify motor control before starting
+            self.motion.verify_motor_control()
+            
+            # Activate fins at start
+            self.motion.fin_on()
+            
+            self._initialized = True
+            self.logger.info("Robot controller initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize robot controller: {str(e)}")
+            raise RobotError(f"Robot controller initialization failed: {str(e)}", "robot_controller")
