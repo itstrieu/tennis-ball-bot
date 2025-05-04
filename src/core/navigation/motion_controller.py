@@ -264,6 +264,21 @@ class MotionController:
             time.sleep(duration)
 
     @with_error_handling("motion_controller")
+    def search(self, speed: Optional[int] = None, duration: Optional[float] = None):
+        """Rotate right to search for balls."""
+        self.logger.info(f"search called with speed={speed}, duration={duration}")
+        pattern = {
+            "front_left": 1,   # FL
+            "front_right": -1, # FR
+            "rear_left": 1,    # RL
+            "rear_right": -1   # RR
+        }
+        self._move_by_pattern(pattern, speed)
+        if duration:
+            time.sleep(duration)
+            self.stop()
+
+    @with_error_handling("motion_controller")
     def _disable_motor_driver(self):
         """Disable motor driver by setting standby pin to 0."""
         if self._gpio_handle is None:
