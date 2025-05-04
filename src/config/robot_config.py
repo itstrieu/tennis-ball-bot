@@ -36,9 +36,9 @@ class RobotConfig:
     
     # Basic speeds & thresholds
     speed: int = 85  # Higher base speed
-    center_rotate_speed: int = 70  # Higher rotation speed
-    search_rotate_speed: int = 70  # Higher search speed
-    inter_step_pause: float = 0.2
+    center_rotate_speed: int = 60  # Higher rotation speed
+    search_rotate_speed: int = 60  # Higher search speed
+    inter_step_pause: float = 0.5
     
     # Target areas and thresholds
     target_area: int = 12000
