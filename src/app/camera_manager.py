@@ -63,7 +63,7 @@ class CameraManager:
             self.camera = Picamera2()
             self.camera.configure(self.camera.create_preview_configuration(
                 main={"size": (640, 480), "format": "RGB888"},
-                raw={"size": (1536, 864), "format": "SBGGR10_1X10"}
+                raw={"size": (1536, 864), "format": "SBGGR8"}
             ))
             
             # Create frame queue and event in the correct event loop context
