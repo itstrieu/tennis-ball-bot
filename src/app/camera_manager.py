@@ -34,11 +34,7 @@ class CameraManager:
         self._initialized = False
         self._frame_lock = asyncio.Lock()
         self._frame_buffer = None
-        # Create a new event loop for this instance
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        # Create the event in the current loop
-        self._frame_available = asyncio.Event()
+        self._frame_queue = asyncio.Queue(maxsize=1)
         self._update_task = None
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
@@ -86,15 +82,9 @@ class CameraManager:
             self.start()
             
         try:
-            # Ensure we're using the correct event loop
-            if asyncio.get_event_loop() != self._loop:
-                asyncio.set_event_loop(self._loop)
-            
-            await self._frame_available.wait()
-            async with self._frame_lock:
-                frame = self._frame_buffer
-                self._frame_available.clear()
-                return frame
+            # Get frame from queue
+            frame = await self._frame_queue.get()
+            return frame
         except Exception as e:
             self.logger.error(f"Failed to capture frame: {str(e)}")
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
@@ -104,10 +94,6 @@ class CameraManager:
         """Update the frame buffer in a separate task with proper synchronization."""
         while self._initialized:
             try:
-                # Ensure we're using the correct event loop
-                if asyncio.get_event_loop() != self._loop:
-                    asyncio.set_event_loop(self._loop)
-                
                 current_time = time.time()
                 if current_time - self._last_frame_time < self._frame_interval:
                     await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
@@ -119,7 +105,13 @@ class CameraManager:
                 # Update frame buffer with proper synchronization
                 async with self._frame_lock:
                     self._frame_buffer = frame
-                    self._frame_available.set()
+                    # Put frame in queue, replacing any existing frame
+                    if not self._frame_queue.empty():
+                        try:
+                            self._frame_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                    await self._frame_queue.put(frame)
                 
                 self._last_frame_time = current_time
                 await asyncio.sleep(self._frame_interval)
