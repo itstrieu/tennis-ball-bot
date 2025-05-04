@@ -96,21 +96,28 @@ class RobotController:
         
         try:
             # Verify motor control and fins are active before starting main loop
+            self.logger.info("Verifying motor control and activating fins...")
             self.motion.verify_motor_control()
             self.motion.fin_on()
             
+            self.logger.info("Starting main control loop...")
             while self.is_running and not self._emergency_stop:
                 # Get frame from camera
+                self.logger.debug("Capturing frame...")
                 frame = await self.vision.get_frame()
                 
                 # Get ball detection data
+                self.logger.debug("Detecting balls...")
                 ball_data = await self.vision.detect_ball(frame)
                 
                 # Update state machine
+                self.logger.debug("Updating state machine...")
                 self.state_machine.update(ball_data)
                 
                 # Decide and execute action
+                self.logger.debug("Deciding action...")
                 action = self.decider.decide(ball_data)
+                self.logger.info(f"Executing action: {action}")
                 self.execute_motion(action)
                 
                 # Development mode slowdown

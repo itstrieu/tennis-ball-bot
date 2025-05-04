@@ -119,7 +119,8 @@ class DemoRobot:
             self.logger.info("Streaming server started")
             await self.stream_server.start()
             
-            # Run robot controller
+            # Start the robot controller
+            self.logger.info("Starting robot controller...")
             await self.controller.run()
             
         except Exception as e:
@@ -135,29 +136,35 @@ class DemoRobot:
                 
             try:
                 # Stop the robot controller first to prevent any new operations
-                if self.controller:
+                if self.controller is not None:
                     await self.controller.cleanup()
+                    self.controller = None
                     
                 # Stop the streaming server
-                if self.stream_server:
+                if self.stream_server is not None:
                     await self.stream_server.stop()
                     self.logger.info("Streaming server stopped")
+                    self.stream_server = None
                     
                 # Clean up the movement decider
-                if self.decider:
+                if self.decider is not None:
                     await self.decider.cleanup()
+                    self.decider = None
                     
                 # Clean up the vision tracker (which uses the camera)
-                if self.vision:
+                if self.vision is not None:
                     await self.vision.cleanup()
+                    self.vision = None
                     
                 # Clean up the motion controller
-                if self.motion:
+                if self.motion is not None:
                     await self.motion.cleanup()
+                    self.motion = None
                     
                 # Clean up the camera last since other components depend on it
-                if self.camera:
+                if self.camera is not None:
                     await self.camera.cleanup()
+                    self.camera = None
                     
                 self._cleanup_complete = True
                 self.logger.info("Cleanup completed successfully")
