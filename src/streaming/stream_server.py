@@ -232,39 +232,55 @@ class StreamServer:
         @with_error_handling("stream_server")
         async def websocket_endpoint(websocket: WebSocket):
             """Handle WebSocket connections for streaming."""
-            await websocket.accept()
+            if not self.camera:
+                self.logger.error("Camera not initialized")
+                await websocket.close()
+                return
+                
             try:
+                await websocket.accept()
+                self.logger.info("WebSocket connection accepted")
+                
                 # Register as a stream consumer
                 stream_condition = await self.camera.register_stream_consumer()
-                self._stream_consumers.add(asyncio.current_task())
                 
-                while True:
-                    try:
-                        # Wait for new frame
+                try:
+                    # Start streaming if not already started
+                    if not self.camera._streaming:
+                        await self.camera.start_streaming()
+                    
+                    # Create encoder for this connection
+                    encoder = MJPEGEncoder(quality=80)
+                    output = FileOutput()
+                    encoder.output = output
+                    
+                    while True:
+                        # Wait for a new frame
                         async with stream_condition:
                             await stream_condition.wait()
-                        
-                        # Get frame and encode as JPEG using picamera2
-                        frame = await self.camera.get_frame()
-                        if frame is not None:
-                            # Create a temporary encoder for this frame
-                            encoder = MJPEGEncoder(quality=80)
-                            output = FileOutput()
-                            encoder.output = output
                             
-                            # Encode the frame
-                            encoder.encode(frame)
-                            await websocket.send_bytes(output.getvalue())
-                    except asyncio.CancelledError:
-                        break
-                    except Exception as e:
-                        self.logger.error(f"Error in WebSocket stream: {str(e)}")
-                        break
-            finally:
-                # Clean up
-                await self.camera.unregister_stream_consumer()
-                self._stream_consumers.discard(asyncio.current_task())
+                        # Get the frame
+                        frame = await self.camera.get_frame()
+                        if frame is None:
+                            continue
+                            
+                        # Encode and send the frame
+                        encoder.encode(frame)
+                        await websocket.send_bytes(output.getvalue())
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in WebSocket stream: {str(e)}")
+                    raise
+                    
+                finally:
+                    # Unregister as a stream consumer
+                    await self.camera.unregister_stream_consumer()
+                    await websocket.close()
+                    
+            except Exception as e:
+                self.logger.error(f"WebSocket error: {str(e)}")
                 await websocket.close()
+                raise
 
     @with_error_handling("stream_server")
     async def start(self, host="0.0.0.0", port=8000):

@@ -138,13 +138,15 @@ class CameraManager:
     @with_error_handling("camera_manager")
     async def register_stream_consumer(self):
         """Register a new stream consumer."""
-        self._stream_consumers.add(asyncio.current_task())
+        consumer_id = id(asyncio.current_task())
+        self._stream_consumers.add(consumer_id)
         return self._stream_condition
 
     @with_error_handling("camera_manager")
     async def unregister_stream_consumer(self):
         """Unregister a stream consumer."""
-        self._stream_consumers.discard(asyncio.current_task())
+        consumer_id = id(asyncio.current_task())
+        self._stream_consumers.discard(consumer_id)
 
     @with_error_handling("camera_manager")
     def cleanup(self) -> None:

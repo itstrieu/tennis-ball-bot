@@ -22,7 +22,7 @@ class RobotConfig:
     
     # === Vision Configuration ===
     vision_model_path: str = "models/current_best.pt"
-    confidence_threshold: float = 0.7
+    confidence_threshold: float = 0.9
     frame_width: int = 640
     camera_offset: int = 0
     
