@@ -14,7 +14,7 @@ from typing import Optional
 from src.app.camera_manager import CameraManager
 from src.core.navigation.motion_controller import MotionController
 from src.core.detection.vision_tracker import VisionTracker
-from src.core.navigation.movement_decider import MovementDecider
+from src.core.strategy.movement_decider import MovementDecider
 from src.app.robot_controller import RobotController
 from src.streaming.stream_server import StreamServer
 from utils.logger import Logger
