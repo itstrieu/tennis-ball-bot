@@ -32,7 +32,7 @@ class RobotConfig:
     fin_speed: int = 85
     
     # Wheels
-    pwm_freq: int = 1000  # Lower frequency for better motor control
+    pwm_freq: int = 10000  # 10kHz frequency for motor control
     
     # Basic speeds & thresholds
     speed: int = 85  # Higher base speed

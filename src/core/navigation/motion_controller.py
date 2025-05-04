@@ -161,12 +161,12 @@ class MotionController:
             result2 = lgpio.gpio_write(self._gpio_handle, in2, in2_val)
             self.logger.debug(f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}")
         
-        # Set PWM with 10kHz frequency
-        result = lgpio.tx_pwm(self._gpio_handle, pwm, 10000, duty)
+        # Set PWM with frequency from config
+        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
         if result < 0:
             self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
         else:
-            self.logger.debug(f"Set PWM on pin {pwm} to {duty}%")
+            self.logger.debug(f"Set PWM on pin {pwm} to {duty}% at {self.config.pwm_freq}Hz")
             # Small delay to ensure PWM takes effect
             time.sleep(0.1)
 
@@ -274,7 +274,7 @@ class MotionController:
             # First stop all motors
             for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
                 pins = self.config.pins[motor_id]
-                lgpio.tx_pwm(self._gpio_handle, pins["pwm"], 10000, 0)
+                lgpio.tx_pwm(self._gpio_handle, pins["pwm"], self.config.pwm_freq, 0)
             
             # Then disable motor driver
             self._disable_motor_driver()
