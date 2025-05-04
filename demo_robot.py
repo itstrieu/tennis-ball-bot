@@ -50,9 +50,8 @@ class DemoRobot:
         self.decider = None
         self.controller = None
         self.stream_server = None
-        self._main_loop = None
         self._cleanup_complete = False
-        self._cleanup_lock = asyncio.Lock()
+        self._main_loop = None
         self._setup_signal_handlers()
 
     def _setup_signal_handlers(self):
@@ -60,7 +59,8 @@ class DemoRobot:
         def handle_signal(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating shutdown")
             if self._main_loop and not self._cleanup_complete:
-                self._main_loop.create_task(self.cleanup())
+                # Use the existing event loop to run cleanup
+                asyncio.run_coroutine_threadsafe(self.cleanup(), self._main_loop)
                 
         signal.signal(signal.SIGINT, handle_signal)
         signal.signal(signal.SIGTERM, handle_signal)
@@ -71,27 +71,29 @@ class DemoRobot:
     async def initialize(self):
         """Initialize all robot components."""
         try:
-            # Create main event loop
-            self._main_loop = asyncio.get_event_loop()
-            
             # Initialize camera
+            self.logger.info("Initializing camera...")
             self.camera = CameraManager(self.config)
             await self.camera.initialize()
             
             # Initialize motion controller
+            self.logger.info("Initializing motion controller...")
             self.motion = MotionController(self.config)
             await self.motion.initialize()
             
             # Initialize vision tracker
+            self.logger.info("Initializing vision tracker...")
             self.vision = VisionTracker(self.config)
             await self.vision.initialize()
-            await self.vision.set_camera(self.camera)  # Set the camera instance
+            await self.vision.set_camera(self.camera)
             
             # Initialize movement decider
+            self.logger.info("Initializing movement decider...")
             self.decider = MovementDecider(self.config)
             await self.decider.initialize()
             
             # Initialize robot controller
+            self.logger.info("Initializing robot controller...")
             self.controller = RobotController(
                 motion=self.motion,
                 vision=self.vision,
@@ -100,10 +102,6 @@ class DemoRobot:
                 dev_mode=True
             )
             await self.controller.initialize()
-            
-            # Initialize streaming server
-            self.stream_server = StreamServer(self.config)
-            self.stream_server.set_components(self.camera, self.vision)
             
             self.logger.info("All components initialized successfully")
             
@@ -115,8 +113,13 @@ class DemoRobot:
     async def run(self):
         """Run the robot demo."""
         try:
-            # Start streaming server
-            self.logger.info("Streaming server started")
+            # Store the main event loop
+            self._main_loop = asyncio.get_event_loop()
+            
+            # Start streaming server in the background
+            self.logger.info("Starting streaming server...")
+            self.stream_server = StreamServer(self.config)
+            self.stream_server.set_components(self.camera, self.vision)
             await self.stream_server.start()
             
             # Start the robot controller
@@ -130,48 +133,47 @@ class DemoRobot:
 
     async def cleanup(self):
         """Clean up all robot components."""
-        async with self._cleanup_lock:
-            if self._cleanup_complete:
-                return
+        if self._cleanup_complete:
+            return
+            
+        try:
+            # Stop the robot controller first to prevent any new operations
+            if self.controller is not None:
+                await self.controller.cleanup()
+                self.controller = None
                 
-            try:
-                # Stop the robot controller first to prevent any new operations
-                if self.controller is not None:
-                    await self.controller.cleanup()
-                    self.controller = None
-                    
-                # Stop the streaming server
-                if self.stream_server is not None:
-                    await self.stream_server.stop()
-                    self.logger.info("Streaming server stopped")
-                    self.stream_server = None
-                    
-                # Clean up the movement decider
-                if self.decider is not None:
-                    await self.decider.cleanup()
-                    self.decider = None
-                    
-                # Clean up the vision tracker (which uses the camera)
-                if self.vision is not None:
-                    await self.vision.cleanup()
-                    self.vision = None
-                    
-                # Clean up the motion controller
-                if self.motion is not None:
-                    await self.motion.cleanup()
-                    self.motion = None
-                    
-                # Clean up the camera last since other components depend on it
-                if self.camera is not None:
-                    await self.camera.cleanup()
-                    self.camera = None
-                    
-                self._cleanup_complete = True
-                self.logger.info("Cleanup completed successfully")
+            # Stop the streaming server
+            if self.stream_server is not None:
+                await self.stream_server.stop()
+                self.logger.info("Streaming server stopped")
+                self.stream_server = None
                 
-            except Exception as e:
-                self.logger.error(f"Error during cleanup: {str(e)}")
-                raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
+            # Clean up the movement decider
+            if self.decider is not None:
+                await self.decider.cleanup()
+                self.decider = None
+                
+            # Clean up the vision tracker
+            if self.vision is not None:
+                await self.vision.cleanup()
+                self.vision = None
+                
+            # Clean up the motion controller
+            if self.motion is not None:
+                await self.motion.cleanup()
+                self.motion = None
+                
+            # Clean up the camera last since other components depend on it
+            if self.camera is not None:
+                await self.camera.cleanup()
+                self.camera = None
+                
+            self._cleanup_complete = True
+            self.logger.info("Cleanup completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {str(e)}")
+            raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
 
 
 async def main():

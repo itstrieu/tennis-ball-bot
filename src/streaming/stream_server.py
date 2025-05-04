@@ -286,52 +286,60 @@ class StreamServer:
                     pass
                 raise
 
-    @with_error_handling("stream_server")
-    async def start(self, host="0.0.0.0", port=8000):
-        """Start the streaming server."""
+    async def start(self):
+        """Start the streaming server in a separate thread."""
+        if self._server_thread is not None and self._server_thread.is_alive():
+            self.logger.warning("Streaming server is already running")
+            return
+
+        # Ensure camera is ready
         if not self.camera:
-            raise RobotError("Camera not initialized", "stream_server")
+            raise RobotError("Camera not available", "stream_server")
             
-        try:
-            # Start camera streaming
+        # Start camera streaming if not already started
+        if not self.camera._streaming:
             await self.camera.start_streaming()
-            
-            # Start the server
+            self.logger.info("Camera streaming started")
+
+        # Create a new event loop for the server thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # Start the server in a separate thread
+        self._server_thread = threading.Thread(
+            target=self._run_server,
+            daemon=True
+        )
+        self._server_thread.start()
+        self.logger.info("Streaming server started in background thread")
+
+    def _run_server(self):
+        """Run the uvicorn server in the background thread."""
+        try:
             config = uvicorn.Config(
                 self.app,
                 host="0.0.0.0",
-                port=port,
-                log_level="info",
-                access_log=False,
-                proxy_headers=True,
-                forwarded_allow_ips="*",
-                server_header=False,
-                date_header=False,
-                timeout_keep_alive=30,
-                timeout_graceful_shutdown=30,
-                ws_ping_interval=20,
-                ws_ping_timeout=20,
-                ws_max_size=16777216  # 16MB
+                port=8000,
+                log_level="info"
             )
             server = uvicorn.Server(config)
-            await server.serve()
+            server.run()
         except Exception as e:
-            self.logger.error(f"Failed to start streaming server: {str(e)}")
-            raise RobotError(f"Stream server start failed: {str(e)}", "stream_server")
+            self.logger.error(f"Error running streaming server: {str(e)}")
+            raise
 
-    @with_error_handling("stream_server")
     async def stop(self):
         """Stop the streaming server."""
-        try:
-            # Stop camera streaming
-            await self.camera.stop_streaming()
-            
-            # Notify all consumers to stop
-            for consumer in self._stream_consumers:
-                consumer.cancel()
-            self._stream_consumers.clear()
-            
-            self.logger.info("Streaming server stopped")
-        except Exception as e:
-            self.logger.error(f"Error stopping stream server: {str(e)}")
-            raise RobotError(f"Stream server stop failed: {str(e)}", "stream_server")
+        if self._server_thread is None or not self._server_thread.is_alive():
+            return
+
+        # Signal the server to stop
+        self._should_stop = True
+        
+        # Wait for the server thread to finish
+        self._server_thread.join(timeout=5.0)
+        if self._server_thread.is_alive():
+            self.logger.warning("Streaming server did not stop gracefully")
+        
+        self._server_thread = None
+        self.logger.info("Streaming server stopped")
