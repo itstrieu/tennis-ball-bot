@@ -41,6 +41,7 @@ class CameraManager:
         self._streaming = False
         self._stream_condition = asyncio.Condition()
         self._stream_consumers = set()
+        self._loop = asyncio.get_event_loop()
 
     @with_error_handling("camera_manager")
     def start(self) -> None:
@@ -112,6 +113,7 @@ class CameraManager:
             self.start()
             
         try:
+            # Use the stored event loop
             await self._frame_available.wait()
             async with self._frame_lock:
                 frame = self._frame_buffer

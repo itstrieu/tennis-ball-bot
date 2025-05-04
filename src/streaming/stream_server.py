@@ -307,7 +307,10 @@ class StreamServer:
                 server_header=False,
                 date_header=False,
                 timeout_keep_alive=30,
-                timeout_graceful_shutdown=30
+                timeout_graceful_shutdown=30,
+                ws_ping_interval=20,
+                ws_ping_timeout=20,
+                ws_max_size=16777216  # 16MB
             )
             server = uvicorn.Server(config)
             await server.serve()
