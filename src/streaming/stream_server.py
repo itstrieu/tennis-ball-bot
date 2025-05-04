@@ -57,10 +57,17 @@ class StreamServer:
 
     async def _get_frame(self):
         """Get frame from camera in the correct event loop context."""
-        if self._stream_loop is None:
-            self._stream_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._stream_loop)
-        return await self.camera.get_frame()
+        if not self.camera:
+            raise RobotError("Camera not available", "stream_server")
+            
+        try:
+            # Use the camera's event loop
+            if self.camera._stream_loop:
+                asyncio.set_event_loop(self.camera._stream_loop)
+            return await self.camera.get_frame()
+        except Exception as e:
+            self.logger.error(f"Error getting frame: {str(e)}")
+            raise RobotError(f"Frame capture failed: {str(e)}", "stream_server")
 
     def _setup_routes(self):
         """Set up FastAPI routes."""

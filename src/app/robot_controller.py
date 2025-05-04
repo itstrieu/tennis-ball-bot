@@ -161,11 +161,8 @@ class RobotController:
 
     @with_error_handling("robot_controller")
     async def cleanup(self, force: bool = False):
-        """Cleanup resources and stop the robot."""
-        async with self._cleanup_lock:
-            if not force and self._cleanup_complete:
-                return
-                
+        """Clean up resources and stop all operations."""
+        if not self._cleanup_complete:
             try:
                 # Stop any ongoing motion
                 self.motion.stop()
@@ -173,9 +170,14 @@ class RobotController:
                 # Deactivate fins
                 self.motion.fin_off()
                 
-                # Cleanup camera
-                if hasattr(self, 'vision') and self.vision is not None:
-                    await self.vision.cleanup()
+                # Cleanup camera and vision if available
+                if self.vision is not None:
+                    try:
+                        await self.vision.cleanup()
+                    except Exception as e:
+                        self.logger.error(f"Error cleaning up vision: {str(e)}")
+                        if force:
+                            raise
                 
                 self._cleanup_complete = True
                 self._initialized = False
