@@ -55,7 +55,7 @@ class VisionTracker:
         self.camera = camera
         try:
             # Test camera access
-            frame = self.camera.capture_array()
+            frame = self.camera.get_frame()
             if frame is None:
                 raise RobotError("Failed to capture frame", "vision_tracker")
             self._initialized = True
