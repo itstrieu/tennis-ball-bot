@@ -207,7 +207,8 @@ def main():
     # Create and run the demo robot
     demo = DemoRobot()
     
-    # Run the robot
+    # Initialize and run the robot
+    asyncio.run(demo.initialize())
     asyncio.run(demo.run())
 
 
