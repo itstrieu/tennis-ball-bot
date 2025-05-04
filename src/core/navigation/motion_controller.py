@@ -47,9 +47,7 @@ class MotionController:
         self._is_moving = False
         self._gpio_handle = None
         self._pins_claimed = False
-
-        # Initialize logger
-        self.logger = Logger(name="motion", log_level=logging.INFO).get_logger()
+        self.logger = Logger.get_logger(name="motion", log_level=logging.INFO)
         
         try:
             self._initialize_gpio()

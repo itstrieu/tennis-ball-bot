@@ -46,8 +46,7 @@ class RobotController:
         self.state_machine = RobotStateMachine(config=self.config)
         self._emergency_stop = False
         self._cleanup_complete = False
-
-        self.logger = Logger(name="robot", log_level=logging.INFO).get_logger()
+        self.logger = Logger.get_logger(name="robot", log_level=logging.INFO)
         
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)

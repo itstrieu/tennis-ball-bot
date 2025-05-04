@@ -4,6 +4,9 @@ from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
 import logging
+import time
+from typing import Optional, Tuple
+from src.app.camera_manager import CameraManager
 
 
 class VisionTracker:
@@ -27,13 +30,13 @@ class VisionTracker:
             config: Optional RobotConfig instance
         """
         self.config = config or default_config
-        self.model = YOLOInference(self.config.vision_model_path)
+        self.logger = Logger.get_logger(name="vision", log_level=logging.INFO)
+        self.camera = None
+        self.model = None
+        self._initialized = False
         self.frame_width = self.config.frame_width
         self.camera_offset = self.config.camera_offset
         self.conf_threshold = self.config.confidence_threshold
-        self._is_initialized = False
-        self.camera = None  # Will be set by set_camera
-        self.logger = Logger(name="vision", log_level=logging.INFO).get_logger()
 
     @with_error_handling("vision_tracker")
     def set_camera(self, camera):
@@ -42,7 +45,7 @@ class VisionTracker:
         try:
             # Test camera access
             self.get_frame()
-            self._is_initialized = True
+            self._initialized = True
             self.logger.info("Vision tracker initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize vision tracker: {str(e)}")
@@ -59,7 +62,7 @@ class VisionTracker:
         Raises:
             RobotError: If camera access fails
         """
-        if not self._is_initialized:
+        if not self._initialized:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
             
         try:
@@ -85,7 +88,7 @@ class VisionTracker:
         Raises:
             RobotError: If detection fails
         """
-        if not self._is_initialized:
+        if not self._initialized:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
             
         try:
@@ -145,13 +148,13 @@ class VisionTracker:
     @with_error_handling("vision_tracker")
     def cleanup(self):
         """Clean up resources used by the vision tracker."""
-        if not self._is_initialized:
+        if not self._initialized:
             return
             
         try:
             if hasattr(self.model, 'cleanup'):
                 self.model.cleanup()
-            self._is_initialized = False
+            self._initialized = False
             self.logger.info("Vision tracker cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during vision tracker cleanup: {str(e)}")

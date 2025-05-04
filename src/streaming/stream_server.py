@@ -39,7 +39,7 @@ class StreamServer:
     
     def __init__(self, config=None):
         self.config = config or default_config
-        self.logger = Logger(name="stream", log_level=logging.INFO).get_logger()
+        self.logger = Logger.get_logger(name="stream", log_level=logging.INFO)
         self.camera = None
         self.vision = None
         self.app = FastAPI()

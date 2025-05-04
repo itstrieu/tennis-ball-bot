@@ -6,6 +6,7 @@ the robot should move to approach and center the ball.
 """
 
 import logging
+import time
 from typing import Optional, Tuple
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -25,10 +26,11 @@ class MovementDecider:
 
     def __init__(self, config=None):
         self.config = config or default_config
+        self.logger = Logger.get_logger(name="decider", log_level=logging.INFO)
         self.no_ball_count = 0  # Tracks how many consecutive frames had no ball
         self.last_area = 0  # Area of last seen ball
         self.last_seen_valid = False  # True only if the ball was seen in the previous frame
-        self.logger = Logger(name="decider", log_level=logging.INFO).get_logger()
+        self.max_no_ball_count = self.config.max_no_ball_count
 
     @with_error_handling("movement_decider")
     def decide(self, offset: Optional[float], area: float) -> str:

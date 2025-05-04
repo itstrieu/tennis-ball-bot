@@ -30,10 +30,10 @@ class RobotStateMachine:
 
     def __init__(self, config=None):
         self.config = config or default_config
-        self.current_state = RobotState.INITIALIZING
+        self.logger = Logger.get_logger(name="state", log_level=logging.INFO)
+        self.current_state = RobotState.SEARCHING
         self.previous_state = None
         self.error_message = None
-        self.logger = Logger(name="state", log_level=logging.INFO).get_logger()
         
         # State-specific data
         self._search_count = 0
@@ -115,7 +115,7 @@ class RobotStateMachine:
 
     def reset(self) -> None:
         """Reset the state machine to initial state."""
-        self.current_state = RobotState.INITIALIZING
+        self.current_state = RobotState.SEARCHING
         self.previous_state = None
         self.error_message = None
         self._search_count = 0

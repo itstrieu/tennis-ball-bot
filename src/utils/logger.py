@@ -52,9 +52,9 @@ class Logger:
         - log_level: The logging level (e.g., logging.INFO, logging.DEBUG). Defines which log messages are shown.
         - log_to_file: Whether to log to a file (default True). If False, only console logging will occur.
         """
-        self.logger = self.get_logger(name, log_level, log_to_file)
+        self.logger = self.__class__.get_logger(name, log_level, log_to_file)
 
-    def get_logger(self):
+    def get_instance_logger(self):
         """
         Return the logger instance.
 

@@ -26,8 +26,9 @@ class CameraManager:
     
     def __init__(self, config=None):
         self.config = config or default_config
-        self.camera: Optional[Picamera2] = None
-        self.logger = Logger(name="camera", log_level=logging.INFO).get_logger()
+        self.logger = Logger.get_logger(name="camera", log_level=logging.INFO)
+        self.camera = None
+        self._initialized = False
 
     @with_error_handling("camera_manager")
     def initialize(self) -> None:

@@ -1,9 +1,12 @@
 from ultralytics import YOLO
 import numpy as np
 import logging
+import time
+from typing import Optional, List
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from contextlib import contextmanager
+from config.robot_config import default_config
 
 
 class YOLOInference:
@@ -16,7 +19,7 @@ class YOLOInference:
         logger: Logger instance
     """
     
-    def __init__(self, model_path):
+    def __init__(self, model_path: str, config=None):
         """
         Loads YOLOv8 model from .pt file.
         
@@ -26,13 +29,15 @@ class YOLOInference:
         Raises:
             RobotError: If model loading fails
         """
+        self.config = config or default_config
+        self.logger = Logger.get_logger(name="yolo", log_level=logging.INFO)
         self.model_path = model_path
-        self._is_initialized = False
-        self.logger = Logger(name="yolo", log_level=logging.INFO).get_logger()
+        self.model = None
+        self._initialized = False
         
         try:
             self.model = self._load_model(model_path)
-            self._is_initialized = True
+            self._initialized = True
             self.logger.info("YOLO model loaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to load YOLO model: {str(e)}")
@@ -73,7 +78,7 @@ class YOLOInference:
         Raises:
             RobotError: If inference fails
         """
-        if not self._is_initialized:
+        if not self._initialized:
             raise RobotError("YOLO model not initialized", "yolo_inference")
             
         try:
@@ -112,7 +117,7 @@ class YOLOInference:
         Raises:
             RobotError: If cleanup fails
         """
-        if not self._is_initialized:
+        if not self._initialized:
             self.logger.debug("YOLO model already cleaned up")
             return
             
@@ -120,7 +125,7 @@ class YOLOInference:
             # Clear model from memory
             if hasattr(self, 'model'):
                 del self.model
-            self._is_initialized = False
+            self._initialized = False
             self.logger.info("YOLO model cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during YOLO cleanup: {str(e)}")
