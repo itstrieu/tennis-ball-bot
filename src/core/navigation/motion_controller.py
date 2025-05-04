@@ -95,21 +95,21 @@ class MotionController:
         self.logger.info("Output pins claimed successfully")
 
     @with_error_handling("motion_controller")
-    def _set_motor(self, in1: int, in2: int, pwm: int, direction: int, duty: float):
+    def _set_motor(self, in1: int, in2: int, pwm: int, direction: int, speed: int):
         """
-        Set motor state and PWM duty cycle.
+        Set motor state and PWM speed.
         
         Args:
             in1: First control pin
             in2: Second control pin
             pwm: PWM pin
             direction: Direction (1 = forward, -1 = backward, 0 = stop)
-            duty: PWM duty cycle (0-100)
+            speed: PWM speed (0-100)
         """
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
             
-        self.logger.info(f"_set_motor called with in1={in1}, in2={in2}, pwm={pwm}, direction={direction}, duty={duty}")
+        self.logger.info(f"_set_motor called with in1={in1}, in2={in2}, pwm={pwm}, direction={direction}, speed={speed}")
             
         # Set direction
         if direction == 0:
@@ -126,11 +126,11 @@ class MotionController:
             self.logger.debug(f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}")
         
         # Set PWM with frequency from config
-        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
+        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, speed)
         if result < 0:
             self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
         else:
-            self.logger.debug(f"Set PWM on pin {pwm} to {duty}% at {self.config.pwm_freq}Hz")
+            self.logger.debug(f"Set PWM on pin {pwm} to {speed}% at {self.config.pwm_freq}Hz")
             # Small delay to ensure PWM takes effect
             time.sleep(0.1)
 
@@ -160,9 +160,14 @@ class MotionController:
             
             for motor_id, direction in pattern.items():
                 pins = self.config.pins[motor_id]
-                self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, speed)
+                # Reduce speed for rear wheels
+                if "rear" in motor_id:
+                    rear_speed = int(speed * 0.7)  # Reduce rear wheel speed to 70% of front wheels
+                    self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, rear_speed)
+                else:
+                    self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, speed)
                 
-            self.logger.debug(f"Moving with pattern: {pattern}, speed: {speed}")
+            self.logger.debug(f"Moving with pattern: {pattern}, front speed: {speed}%, rear speed: {int(speed * 0.7)}%")
         except Exception as e:
             self._is_moving = False
             # Ensure motor driver is disabled on error
