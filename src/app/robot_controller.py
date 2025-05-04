@@ -72,7 +72,7 @@ class RobotController:
         except KeyboardInterrupt:
             self.logger.info("Stopping robot (KeyboardInterrupt).")
         finally:
-            self.motion.stop()
+            self.motion.cleanup()
             self.logger.info("Control loop ended.")
 
     def execute_motion(self, action):

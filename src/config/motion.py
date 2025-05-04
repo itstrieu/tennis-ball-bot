@@ -24,8 +24,8 @@ CENTER_THRESHOLD = 25
 
 # Movement parameters
 MOVEMENT_STEPS = {
-    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 0.7},
-    "small_forward": {"method": "move_forward", "speed": int(SPEED * 0.8), "time": 0.6},
+    "step_forward": {"method": "move_forward", "speed": SPEED, "time": 1.5},
+    "small_forward": {"method": "move_forward", "speed": int(SPEED), "time": 1},
     "micro_forward": {
         "method": "move_forward",
         "speed": int(SPEED * 0.6),
