@@ -115,8 +115,8 @@ class RobotConfig:
                 },
                 "standby": 17,  # STBY
                 "ultrasonic": {
-                    "trigger": 23,
-                    "echo": 24,
+                    "trigger": 2,
+                    "echo": 15,
                 }
             }
 
