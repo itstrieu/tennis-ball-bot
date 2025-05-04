@@ -37,14 +37,17 @@ class VisionTracker:
         self.frame_width = self.config.frame_width
         self.camera_offset = self.config.camera_offset
         self.conf_threshold = self.config.confidence_threshold
-        
-        # Load YOLO model
+
+    async def initialize(self):
+        """Initialize the vision tracker components."""
         try:
+            # Load YOLO model
             self.model = YOLOInference(self.config.vision_model_path, config=self.config)
             self.logger.info("YOLO model loaded successfully")
+            self._initialized = True
         except Exception as e:
-            self.logger.error(f"Failed to load YOLO model: {str(e)}")
-            raise RobotError(f"YOLO model loading failed: {str(e)}", "vision_tracker")
+            self.logger.error(f"Failed to initialize vision tracker: {str(e)}")
+            raise RobotError(f"Vision tracker initialization failed: {str(e)}", "vision_tracker")
 
     @with_error_handling("vision_tracker")
     async def set_camera(self, camera):
