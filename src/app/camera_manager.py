@@ -19,6 +19,7 @@ from config.robot_config import default_config
 class CameraManager:
     """
     Manages the camera resource and provides access to camera functionality.
+    Implements a frame streaming architecture with proper synchronization.
     
     Attributes:
         config: RobotConfig instance for configuration values
@@ -37,7 +38,9 @@ class CameraManager:
         self._update_task = None
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
-        self._loop = None
+        self._streaming = False
+        self._stream_condition = asyncio.Condition()
+        self._stream_consumers = set()
 
     @with_error_handling("camera_manager")
     def start(self) -> None:
@@ -67,15 +70,14 @@ class CameraManager:
             self.start()
             
         try:
-            self._loop = asyncio.get_event_loop()
-            self._update_task = self._loop.create_task(self._update_frame())
+            self._update_task = asyncio.get_event_loop().create_task(self._update_frame())
             self.logger.info("Camera frame update task started")
         except Exception as e:
             self.logger.error(f"Failed to start frame update task: {str(e)}")
             raise RobotError(f"Frame update task failed: {str(e)}", "camera_manager")
 
     async def _update_frame(self):
-        """Update the frame buffer in a separate task."""
+        """Update the frame buffer in a separate task with proper synchronization."""
         while self._initialized:
             try:
                 current_time = time.time()
@@ -83,9 +85,19 @@ class CameraManager:
                     await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
                     continue
 
+                # Capture new frame
+                frame = self.camera.capture_array()
+                
+                # Update frame buffer with proper synchronization
                 async with self._frame_lock:
-                    self._frame_buffer = self.camera.capture_array()
+                    self._frame_buffer = frame
                     self._frame_available.set()
+                
+                # Notify streaming consumers
+                if self._streaming and self._stream_consumers:
+                    async with self._stream_condition:
+                        self._stream_condition.notify_all()
+                
                 self._last_frame_time = current_time
                 await asyncio.sleep(self._frame_interval)
             except Exception as e:
@@ -108,12 +120,34 @@ class CameraManager:
             self.logger.error(f"Failed to capture frame: {str(e)}")
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
 
+    async def start_streaming(self):
+        """Start the streaming mode."""
+        self._streaming = True
+        self.logger.info("Camera streaming started")
+
+    async def stop_streaming(self):
+        """Stop the streaming mode."""
+        self._streaming = False
+        async with self._stream_condition:
+            self._stream_condition.notify_all()
+        self.logger.info("Camera streaming stopped")
+
+    async def register_stream_consumer(self):
+        """Register a new stream consumer."""
+        self._stream_consumers.add(asyncio.current_task())
+        return self._stream_condition
+
+    async def unregister_stream_consumer(self):
+        """Unregister a stream consumer."""
+        self._stream_consumers.discard(asyncio.current_task())
+
     @with_error_handling("camera_manager")
     def cleanup(self) -> None:
         """Clean up camera resources."""
         if self.camera is not None:
             try:
                 self._initialized = False
+                self._streaming = False
                 if self._update_task:
                     self._update_task.cancel()
                 self.camera.stop()

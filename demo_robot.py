@@ -130,11 +130,8 @@ class DemoRobot:
             # Stop camera and streaming
             if self.stream_server:
                 try:
-                    # Create an event loop to run the coroutine
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.stream_server.stop())
-                    loop.close()
+                    # Use the current event loop instead of creating a new one
+                    asyncio.get_event_loop().run_until_complete(self.stream_server.stop())
                 except Exception as e:
                     self.logger.error(f"Error stopping stream server: {str(e)}")
                 finally:
@@ -170,8 +167,9 @@ class DemoRobot:
             return
             
         try:
+            # Use the current event loop instead of creating a new one
             self._server_thread = Thread(
-                target=lambda: asyncio.run(self.stream_server.start()),
+                target=lambda: asyncio.get_event_loop().run_until_complete(self.stream_server.start()),
                 daemon=True
             )
             self._server_thread.start()
