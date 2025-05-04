@@ -39,9 +39,12 @@ class CameraManager:
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
         self._streaming = False
-        self._stream_condition = asyncio.Condition()
         self._stream_consumers = set()
-        self._loop = asyncio.get_event_loop()
+        try:
+            self._loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
 
     @with_error_handling("camera_manager")
     def start(self) -> None:
@@ -78,35 +81,6 @@ class CameraManager:
             raise RobotError(f"Frame update task failed: {str(e)}", "camera_manager")
 
     @with_error_handling("camera_manager")
-    async def _update_frame(self):
-        """Update the frame buffer in a separate task with proper synchronization."""
-        while self._initialized:
-            try:
-                current_time = time.time()
-                if current_time - self._last_frame_time < self._frame_interval:
-                    await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
-                    continue
-
-                # Capture new frame
-                frame = self.camera.capture_array()
-                
-                # Update frame buffer with proper synchronization
-                async with self._frame_lock:
-                    self._frame_buffer = frame
-                    self._frame_available.set()
-                
-                # Notify streaming consumers
-                if self._streaming and self._stream_consumers:
-                    async with self._stream_condition:
-                        self._stream_condition.notify_all()
-                
-                self._last_frame_time = current_time
-                await asyncio.sleep(self._frame_interval)
-            except Exception as e:
-                self.logger.error(f"Error updating frame: {str(e)}")
-                await asyncio.sleep(0.1)
-
-    @with_error_handling("camera_manager")
     async def get_frame(self):
         """Get a frame from the camera with proper synchronization."""
         if not self._initialized:
@@ -124,6 +98,30 @@ class CameraManager:
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
 
     @with_error_handling("camera_manager")
+    async def _update_frame(self):
+        """Update the frame buffer in a separate task with proper synchronization."""
+        while self._initialized:
+            try:
+                current_time = time.time()
+                if current_time - self._last_frame_time < self._frame_interval:
+                    await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+                    continue
+
+                # Capture new frame
+                frame = self.camera.capture_array()
+                
+                # Update frame buffer with proper synchronization
+                async with self._frame_lock:
+                    self._frame_buffer = frame
+                    self._frame_available.set()
+                
+                self._last_frame_time = current_time
+                await asyncio.sleep(self._frame_interval)
+            except Exception as e:
+                self.logger.error(f"Error updating frame: {str(e)}")
+                await asyncio.sleep(0.1)
+
+    @with_error_handling("camera_manager")
     async def start_streaming(self):
         """Start the streaming mode."""
         self._streaming = True
@@ -133,8 +131,6 @@ class CameraManager:
     async def stop_streaming(self):
         """Stop the streaming mode."""
         self._streaming = False
-        async with self._stream_condition:
-            self._stream_condition.notify_all()
         self.logger.info("Camera streaming stopped")
 
     @with_error_handling("camera_manager")
@@ -142,7 +138,7 @@ class CameraManager:
         """Register a new stream consumer."""
         consumer_id = id(asyncio.current_task())
         self._stream_consumers.add(consumer_id)
-        return self._stream_condition
+        return self._stream_consumers
 
     @with_error_handling("camera_manager")
     async def unregister_stream_consumer(self):

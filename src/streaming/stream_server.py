@@ -231,58 +231,58 @@ class StreamServer:
         @self.app.websocket("/ws")
         @with_error_handling("stream_server")
         async def websocket_endpoint(websocket: WebSocket):
-            """Handle WebSocket connections for streaming."""
-            if not self.camera:
-                self.logger.error("Camera not initialized")
-                await websocket.close()
-                return
-                
+            """WebSocket endpoint for streaming camera feed."""
             try:
                 await websocket.accept()
                 self.logger.info("WebSocket connection accepted")
                 
                 # Register as a stream consumer
-                stream_condition = await self.camera.register_stream_consumer()
+                await self.camera.register_stream_consumer()
+                
+                # Start camera streaming if not already started
+                if not self.camera._streaming:
+                    await self.camera.start_streaming()
+                
+                # Create encoder and output
+                encoder = MJPEGEncoder()
+                output = FileOutput()
+                encoder.output = output
                 
                 try:
-                    # Start streaming if not already started
-                    if not self.camera._streaming:
-                        await self.camera.start_streaming()
-                    
-                    # Create encoder for this connection
-                    encoder = MJPEGEncoder()
-                    output = FileOutput()
-                    encoder.output = output
-                    
                     while True:
-                        # Wait for a new frame
-                        async with stream_condition:
-                            await stream_condition.wait()
-                            
-                        # Get the frame
+                        # Get frame from camera
                         frame = await self.camera.get_frame()
                         if frame is None:
                             continue
-                            
-                        # Encode and send the frame
-                        encoder.encode(frame)
-                        await websocket.send_bytes(output.getvalue())
                         
+                        # Encode frame
+                        encoder.encode(frame)
+                        encoded_frame = output.getvalue()
+                        
+                        # Send frame
+                        await websocket.send_bytes(encoded_frame)
+                        
+                        # Small sleep to prevent CPU hogging
+                        await asyncio.sleep(0.001)
+                        
+                except WebSocketDisconnect:
+                    self.logger.info("WebSocket disconnected")
                 except Exception as e:
                     self.logger.error(f"Error in WebSocket stream: {str(e)}")
                     raise
-                    
                 finally:
-                    # Unregister as a stream consumer
+                    # Cleanup
                     await self.camera.unregister_stream_consumer()
+                    if not self.camera._stream_consumers:
+                        await self.camera.stop_streaming()
                     await websocket.close()
                     
             except Exception as e:
                 self.logger.error(f"WebSocket error: {str(e)}")
                 try:
                     await websocket.close()
-                except Exception as close_error:
-                    self.logger.debug(f"Error closing WebSocket: {str(close_error)}")
+                except:
+                    pass
                 raise
 
     @with_error_handling("stream_server")
