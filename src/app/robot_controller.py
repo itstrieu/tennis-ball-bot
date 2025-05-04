@@ -129,7 +129,7 @@ class RobotController:
                 
             # Execute the movement
             method = getattr(self.motion, params['method'])
-            method(speed=params['speed'], time=params['time'])
+            method(speed=params['speed'], duration=params['time'])
             
         except Exception as e:
             self.logger.error(f"Error executing motion {action}: {str(e)}")
