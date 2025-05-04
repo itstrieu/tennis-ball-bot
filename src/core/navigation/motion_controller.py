@@ -161,12 +161,14 @@ class MotionController:
             result2 = lgpio.gpio_write(self._gpio_handle, in2, in2_val)
             self.logger.debug(f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}")
         
-        # Set PWM
-        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
+        # Set PWM with higher frequency (20kHz)
+        result = lgpio.tx_pwm(self._gpio_handle, pwm, 20000, duty)
         if result < 0:
             self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
         else:
             self.logger.debug(f"Set PWM on pin {pwm} to {duty}%")
+            # Small delay to ensure PWM takes effect
+            time.sleep(0.1)
 
     @with_error_handling("motion_controller")
     def _move_by_pattern(self, pattern: Dict[str, int], speed: Optional[int] = None):
@@ -370,29 +372,29 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def test_motors(self):
-        """
-        Test each motor: forward, backward, stop, and log pin states.
-        """
+        """Test each motor by moving it forward, backward, and stopping."""
         self.logger.info("Starting motor test sequence...")
-
-        for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
-            pins = self.config.pins[motor_id]
+        
+        # Test each motor
+        for motor_name, pins in self.config.pins.items():
+            if motor_name in ["fins", "standby", "ultrasonic"]:
+                continue
+                
+            self.logger.info(f"Testing {motor_name} FORWARD")
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 1, self.config.speed)
+            time.sleep(1)
+            self.verify_motor_control()
             
-            self.logger.info(f"Testing {motor_id} FORWARD")
-            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 1, 80)
+            self.logger.info(f"Testing {motor_name} BACKWARD")
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], -1, self.config.speed)
             time.sleep(1)
             self.verify_motor_control()
-
-            self.logger.info(f"Testing {motor_id} BACKWARD")
-            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], -1, 80)
-            time.sleep(1)
-            self.verify_motor_control()
-
-            self.logger.info(f"Testing {motor_id} STOP")
+            
+            self.logger.info(f"Testing {motor_name} STOP")
             self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 0, 0)
             time.sleep(1)
             self.verify_motor_control()
-
+            
         self.logger.info("Motor test sequence complete.")
 
     def __del__(self):
