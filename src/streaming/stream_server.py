@@ -16,8 +16,7 @@ import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 import uvicorn
-from picamera2.encoders import MJPEGEncoder, Quality
-from picamera2.outputs import FileOutput
+import cv2
 
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -243,11 +242,8 @@ class StreamServer:
                 if not self.camera._streaming:
                     await self.camera.start_streaming()
                 
-                # Create encoder and output
-                encoder = MJPEGEncoder()
-                output = io.BytesIO()  # Use BytesIO instead of FileOutput
-                encoder.output = output
-                
+                # Use OpenCV to encode frame as JPEG for streaming
+
                 try:
                     while True:
                         # Get frame from camera
@@ -255,14 +251,11 @@ class StreamServer:
                         if frame is None:
                             continue
                         
-                        # Encode frame
-                        output.seek(0)  # Reset buffer position
-                        output.truncate()  # Clear buffer
-                        encoder.encode(frame, None)  # Pass None as request parameter
-                        encoded_frame = output.getvalue()
-                        
-                        # Send frame
-                        await websocket.send_bytes(encoded_frame)
+                        # Encode frame as JPEG for streaming (does NOT affect inference)
+                        ret, jpeg = cv2.imencode('.jpg', frame)
+                        if not ret:
+                            continue
+                        await websocket.send_bytes(jpeg.tobytes())
                         
                         # Small sleep to prevent CPU hogging
                         await asyncio.sleep(0.001)
