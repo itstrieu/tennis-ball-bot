@@ -8,6 +8,7 @@ Handles WebSocket connections for real-time video streaming.
 import io
 import asyncio
 import logging
+import threading
 from threading import Condition
 from contextlib import asynccontextmanager
 from typing import Optional, Set
@@ -45,6 +46,8 @@ class StreamServer:
         self._stream_lock = asyncio.Lock()
         self._stream_consumers = set()
         self._stream_loop = None
+        self._server_thread = None
+        self._should_stop = False
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
