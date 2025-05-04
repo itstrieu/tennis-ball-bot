@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
-from src.app.camera_manager import cleanup_camera
+from src.app.camera_manager import CameraManager
 from src.core.strategy.robot_state import RobotStateMachine, RobotState
 
 
@@ -157,7 +157,7 @@ class RobotController:
             self.motion.stop()
             
             # Cleanup camera
-            cleanup_camera()
+            CameraManager.cleanup()
             
             self._cleanup_complete = True
             self.logger.info("Cleanup completed successfully")
