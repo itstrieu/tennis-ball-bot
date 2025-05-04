@@ -32,12 +32,12 @@ class RobotConfig:
     fin_speed: int = 85
     
     # Wheels
-    pwm_freq: int = 10000
+    pwm_freq: int = 1000  # Lower frequency for better motor control
     
     # Basic speeds & thresholds
-    speed: int = 70
-    center_rotate_speed: int = 50
-    search_rotate_speed: int = 50
+    speed: int = 85  # Higher base speed
+    center_rotate_speed: int = 70  # Higher rotation speed
+    search_rotate_speed: int = 70  # Higher search speed
     inter_step_pause: float = 0.2
     
     # Target areas and thresholds

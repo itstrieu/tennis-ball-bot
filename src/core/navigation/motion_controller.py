@@ -92,7 +92,7 @@ class MotionController:
         Returns:
             Scaled duty cycle
         """
-        if motor_id == "left":
+        if motor_id.startswith("left"):
             return duty * self.left_scale
         return duty * self.right_scale
 
@@ -123,15 +123,21 @@ class MotionController:
             in1: First control pin
             in2: Second control pin
             pwm: PWM pin
-            direction: Direction (1 = forward, -1 = backward)
+            direction: Direction (1 = forward, -1 = backward, 0 = stop)
             duty: PWM duty cycle (0-100)
         """
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
             
         # Set direction
-        lgpio.gpio_write(self._gpio_handle, in1, 1 if direction > 0 else 0)
-        lgpio.gpio_write(self._gpio_handle, in2, 0 if direction > 0 else 1)
+        if direction == 0:
+            # Stop motor by setting both control pins to 0
+            lgpio.gpio_write(self._gpio_handle, in1, 0)
+            lgpio.gpio_write(self._gpio_handle, in2, 0)
+        else:
+            # Set direction for forward/backward
+            lgpio.gpio_write(self._gpio_handle, in1, 1 if direction > 0 else 0)
+            lgpio.gpio_write(self._gpio_handle, in2, 0 if direction > 0 else 1)
         
         # Set PWM
         lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
@@ -152,6 +158,9 @@ class MotionController:
         self._is_moving = True
         
         try:
+            # Enable motor driver
+            lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 1)
+            
             for motor_id, direction in pattern.items():
                 pins = self.config.pins[motor_id]
                 duty = self._apply_scale(motor_id, speed)
@@ -166,10 +175,10 @@ class MotionController:
     def move_forward(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Move forward at specified speed for optional duration."""
         pattern = {
-            "front_left": 1,
-            "front_right": 1,
-            "rear_left": 1,
-            "rear_right": 1
+            "front_left": -1,  # FL
+            "front_right": 1,  # FR
+            "rear_left": 1,    # RL
+            "rear_right": -1   # RR
         }
         self._move_by_pattern(pattern, speed)
         if duration:
@@ -180,10 +189,10 @@ class MotionController:
     def move_backward(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Move backward at specified speed for optional duration."""
         pattern = {
-            "front_left": -1,
-            "front_right": -1,
-            "rear_left": -1,
-            "rear_right": -1
+            "front_left": 1,   # FL
+            "front_right": -1, # FR
+            "rear_left": -1,   # RL
+            "rear_right": 1    # RR
         }
         self._move_by_pattern(pattern, speed)
         if duration:
@@ -194,10 +203,10 @@ class MotionController:
     def rotate_left(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Rotate left at specified speed for optional duration."""
         pattern = {
-            "front_left": -1,
-            "front_right": 1,
-            "rear_left": -1,
-            "rear_right": 1
+            "front_left": 1,   # FL
+            "front_right": 1,  # FR
+            "rear_left": 1,    # RL
+            "rear_right": 1    # RR
         }
         self._move_by_pattern(pattern, speed)
         if duration:
@@ -208,10 +217,10 @@ class MotionController:
     def rotate_right(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Rotate right at specified speed for optional duration."""
         pattern = {
-            "front_left": 1,
-            "front_right": -1,
-            "rear_left": 1,
-            "rear_right": -1
+            "front_left": -1,  # FL
+            "front_right": -1, # FR
+            "rear_left": -1,   # RL
+            "rear_right": -1   # RR
         }
         self._move_by_pattern(pattern, speed)
         if duration:
@@ -222,11 +231,12 @@ class MotionController:
     def stop(self, speed: int = 0, duration: Optional[float] = None):
         """Stop all motors."""
         if self._is_moving:
-            # Set all motors to stop by setting both control pins to 0
+            # Disable motor driver
+            lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 0)
+            
+            # Set all motors to stop
             for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
                 pins = self.config.pins[motor_id]
-                lgpio.gpio_write(self._gpio_handle, pins["in1"], 0)
-                lgpio.gpio_write(self._gpio_handle, pins["in2"], 0)
                 lgpio.tx_pwm(self._gpio_handle, pins["pwm"], self.config.pwm_freq, 0)
             
             self._is_moving = False
@@ -246,7 +256,7 @@ class MotionController:
         
         try:
             lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 1)
-            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, speed)
+            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, 0)
             lgpio.tx_pwm(self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, speed)
             self.logger.debug(f"Fins activated at speed {speed}")
         except Exception as e:
@@ -262,9 +272,9 @@ class MotionController:
         pins = self.config.pins["fins"]
         
         try:
-            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 0)
             lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, 0)
             lgpio.tx_pwm(self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, 0)
+            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 0)
             self.logger.debug("Fins deactivated")
         except Exception as e:
             self.logger.error(f"Failed to deactivate fins: {str(e)}")
