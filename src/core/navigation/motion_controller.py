@@ -19,14 +19,9 @@ class MotionController:
     MotionController manages wheel and fin motors via GPIO and PWM.
     Front wheels are standard; rear wheels have omnidirectional rollers but are still driven.
 
-    You can adjust power balance between left/right wheels using
-    `left_scale` and `right_scale` attributes.
-
     Attributes:
         config: RobotConfig instance for configuration values
         speed: Base speed (0-100)
-        left_scale: Left wheel power scaling (1.0 = no change)
-        right_scale: Right wheel power scaling (1.0 = no change)
         logger: Logger instance
     """
 
@@ -42,8 +37,6 @@ class MotionController:
         """
         self.config = config or default_config
         self.speed = self.config.speed
-        self.left_scale = 1.0
-        self.right_scale = 1.0
         self._is_moving = False
         self._gpio_handle = None
         self._pins_claimed = False
@@ -74,35 +67,6 @@ class MotionController:
             self.logger.info("Motor driver enabled (standby pin set to 1)")
             
         self.logger.info("GPIO initialized successfully")
-
-    @with_error_handling("motion_controller")
-    def set_balance(self, left_scale: float, right_scale: float):
-        """
-        Adjust power balance between left and right wheels.
-        
-        Args:
-            left_scale: Left wheel power scaling (1.0 = no change)
-            right_scale: Right wheel power scaling (1.0 = no change)
-        """
-        self.left_scale = max(0.0, min(1.0, left_scale))
-        self.right_scale = max(0.0, min(1.0, right_scale))
-        self.logger.debug(f"Set wheel balance: left={self.left_scale}, right={self.right_scale}")
-
-    @with_error_handling("motion_controller")
-    def _apply_scale(self, motor_id: str, duty: float) -> float:
-        """
-        Apply power scaling to motor duty cycle.
-        
-        Args:
-            motor_id: Motor identifier ("left" or "right")
-            duty: Base duty cycle
-            
-        Returns:
-            Scaled duty cycle
-        """
-        if motor_id.startswith("left"):
-            return duty * self.left_scale
-        return duty * self.right_scale
 
     @with_error_handling("motion_controller")
     def _claim_output_pins(self):
@@ -196,8 +160,7 @@ class MotionController:
             
             for motor_id, direction in pattern.items():
                 pins = self.config.pins[motor_id]
-                duty = self._apply_scale(motor_id, speed)
-                self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, duty)
+                self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, speed)
                 
             self.logger.debug(f"Moving with pattern: {pattern}, speed: {speed}")
         except Exception as e:
@@ -381,12 +344,18 @@ class MotionController:
                 continue
                 
             self.logger.info(f"Testing {motor_name} FORWARD")
-            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 1, self.config.speed)
+            # For front_left and rear_right, use -1 for forward
+            # For front_right and rear_left, use 1 for forward
+            direction = -1 if motor_name in ["front_left", "rear_right"] else 1
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, self.config.speed)
             time.sleep(1)
             self.verify_motor_control()
             
             self.logger.info(f"Testing {motor_name} BACKWARD")
-            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], -1, self.config.speed)
+            # For front_left and rear_right, use 1 for backward
+            # For front_right and rear_left, use -1 for backward
+            direction = 1 if motor_name in ["front_left", "rear_right"] else -1
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], direction, self.config.speed)
             time.sleep(1)
             self.verify_motor_control()
             
