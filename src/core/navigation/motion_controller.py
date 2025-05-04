@@ -106,11 +106,19 @@ class MotionController:
         for motor_pins in self.config.pins.values():
             if isinstance(motor_pins, dict):
                 # Handle nested pin dictionaries (motors)
-                for pin in motor_pins.values():
-                    lgpio.gpio_claim_output(self._gpio_handle, pin)
+                for pin_name, pin in motor_pins.items():
+                    result = lgpio.gpio_claim_output(self._gpio_handle, pin)
+                    if result < 0:
+                        self.logger.error(f"Failed to claim pin {pin_name} ({pin}): {result}")
+                    else:
+                        self.logger.debug(f"Successfully claimed pin {pin_name} ({pin})")
             else:
                 # Handle single pin values (standby, etc.)
-                lgpio.gpio_claim_output(self._gpio_handle, motor_pins)
+                result = lgpio.gpio_claim_output(self._gpio_handle, motor_pins)
+                if result < 0:
+                    self.logger.error(f"Failed to claim pin {motor_pins}: {result}")
+                else:
+                    self.logger.debug(f"Successfully claimed pin {motor_pins}")
             
         self.logger.info("Output pins claimed successfully")
 
@@ -132,15 +140,23 @@ class MotionController:
         # Set direction
         if direction == 0:
             # Stop motor by setting both control pins to 0
-            lgpio.gpio_write(self._gpio_handle, in1, 0)
-            lgpio.gpio_write(self._gpio_handle, in2, 0)
+            result1 = lgpio.gpio_write(self._gpio_handle, in1, 0)
+            result2 = lgpio.gpio_write(self._gpio_handle, in2, 0)
+            self.logger.debug(f"Stopping motor: in1={in1}({result1}), in2={in2}({result2})")
         else:
             # Set direction for forward/backward
-            lgpio.gpio_write(self._gpio_handle, in1, 1 if direction > 0 else 0)
-            lgpio.gpio_write(self._gpio_handle, in2, 0 if direction > 0 else 1)
+            in1_val = 1 if direction > 0 else 0
+            in2_val = 0 if direction > 0 else 1
+            result1 = lgpio.gpio_write(self._gpio_handle, in1, in1_val)
+            result2 = lgpio.gpio_write(self._gpio_handle, in2, in2_val)
+            self.logger.debug(f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}")
         
         # Set PWM
-        lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
+        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, duty)
+        if result < 0:
+            self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
+        else:
+            self.logger.debug(f"Set PWM on pin {pwm} to {duty}%")
 
     @with_error_handling("motion_controller")
     def _move_by_pattern(self, pattern: Dict[str, int], speed: Optional[int] = None):
@@ -159,7 +175,11 @@ class MotionController:
         
         try:
             # Enable motor driver
-            lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 1)
+            result = lgpio.gpio_write(self._gpio_handle, self.config.pins["standby"], 1)
+            if result < 0:
+                self.logger.error(f"Failed to enable motor driver (standby pin): {result}")
+            else:
+                self.logger.debug("Motor driver enabled (standby pin set to 1)")
             
             for motor_id, direction in pattern.items():
                 pins = self.config.pins[motor_id]
@@ -294,6 +314,28 @@ class MotionController:
             except Exception as e:
                 self.logger.error(f"Error during cleanup: {str(e)}")
                 raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
+
+    @with_error_handling("motion_controller")
+    def verify_motor_control(self):
+        """Verify motor control pins and their states."""
+        if self._gpio_handle is None:
+            raise RobotError("GPIO not initialized", "motion_controller")
+            
+        self.logger.info("Verifying motor control pins...")
+        
+        # Check standby pin
+        standby_pin = self.config.pins["standby"]
+        standby_state = lgpio.gpio_read(self._gpio_handle, standby_pin)
+        self.logger.info(f"Standby pin ({standby_pin}) state: {standby_state}")
+        
+        # Check each motor's control pins
+        for motor_id, pins in self.config.pins.items():
+            if motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
+                in1_state = lgpio.gpio_read(self._gpio_handle, pins["in1"])
+                in2_state = lgpio.gpio_read(self._gpio_handle, pins["in2"])
+                self.logger.info(f"Motor {motor_id}: in1={pins['in1']}({in1_state}), in2={pins['in2']}({in2_state})")
+                
+        self.logger.info("Motor control verification complete")
 
     def __del__(self):
         """Ensure cleanup on object destruction."""

@@ -89,6 +89,12 @@ class RobotController:
         self._cleanup_complete = False
         
         try:
+            # Verify motor control before starting
+            self.motion.verify_motor_control()
+            
+            # Activate fins at start
+            self.motion.fin_on()
+            
             while self.is_running and not self._emergency_stop:
                 # Get frame from camera
                 frame = self.vision.get_frame()
@@ -145,6 +151,9 @@ class RobotController:
         try:
             # Stop any ongoing motion
             self.motion.stop()
+            
+            # Deactivate fins
+            self.motion.fin_off()
             
             # Cleanup camera
             if hasattr(self, 'vision') and self.vision is not None:
