@@ -34,22 +34,22 @@ MOVEMENT_STEPS = {
     "step_left": {
         "method": "rotate_left",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 0.6,
+        "time": 0.3,
     },
     "micro_left": {
         "method": "rotate_left",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 0.3,
+        "time": 0.1,
     },
     "step_right": {
         "method": "rotate_right",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 0.6,
+        "time": 0.3,
     },
     "micro_right": {
         "method": "rotate_right",
         "speed": int(CENTER_ROTATE_SPEED),
-        "time": 0.3,
+        "time": 0.1,
     },
     "stop": {"method": "stop", "speed": 0, "time": 1.0},
     "search": {
