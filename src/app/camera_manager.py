@@ -40,11 +40,11 @@ class CameraManager:
         self._frame_interval = 1.0 / self.config.target_fps
         self._streaming = False
         self._stream_consumers = set()
-        try:
-            self._loop = asyncio.get_event_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
+        # Create a new event loop for this instance
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        # Create the event in the correct loop
+        self._frame_available = asyncio.Event(loop=self._loop)
 
     @with_error_handling("camera_manager")
     def start(self) -> None:
@@ -87,7 +87,10 @@ class CameraManager:
             self.start()
             
         try:
-            # Use the stored event loop
+            # Ensure we're using the correct event loop
+            if asyncio.get_event_loop() != self._loop:
+                asyncio.set_event_loop(self._loop)
+            
             await self._frame_available.wait()
             async with self._frame_lock:
                 frame = self._frame_buffer
@@ -102,6 +105,10 @@ class CameraManager:
         """Update the frame buffer in a separate task with proper synchronization."""
         while self._initialized:
             try:
+                # Ensure we're using the correct event loop
+                if asyncio.get_event_loop() != self._loop:
+                    asyncio.set_event_loop(self._loop)
+                
                 current_time = time.time()
                 if current_time - self._last_frame_time < self._frame_interval:
                     await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging

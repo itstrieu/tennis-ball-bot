@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Set
 import time
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 import uvicorn
 from picamera2.encoders import MJPEGEncoder, Quality
@@ -256,7 +256,7 @@ class StreamServer:
                             continue
                         
                         # Encode frame
-                        encoder.encode(frame)
+                        encoder.encode(frame, None)  # Pass None as request parameter
                         encoded_frame = output.getvalue()
                         
                         # Send frame
