@@ -41,20 +41,31 @@ class UltrasonicSensor:
         """Initialize GPIO for ultrasonic sensor."""
         if self._gpio_handle is None:
             self._gpio_handle = lgpio.gpiochip_open(0)
+            self.logger.info("Opened GPIO chip")
             
         # Configure trigger pin as output
         trigger_pin = self.config.pins["ultrasonic"]["trigger"]
         result = lgpio.gpio_claim_output(self._gpio_handle, trigger_pin)
         if result < 0:
+            self.logger.error(f"Failed to claim trigger pin {trigger_pin}: {result}")
             raise RobotError(f"Failed to claim trigger pin {trigger_pin}", "ultrasonic")
+        self.logger.info(f"Claimed trigger pin {trigger_pin}")
             
         # Configure echo pin as input
         echo_pin = self.config.pins["ultrasonic"]["echo"]
         result = lgpio.gpio_claim_input(self._gpio_handle, echo_pin)
         if result < 0:
+            self.logger.error(f"Failed to claim echo pin {echo_pin}: {result}")
             raise RobotError(f"Failed to claim echo pin {echo_pin}", "ultrasonic")
+        self.logger.info(f"Claimed echo pin {echo_pin}")
             
-        self.logger.info("Ultrasonic sensor GPIO initialized")
+        # Test trigger pin
+        lgpio.gpio_write(self._gpio_handle, trigger_pin, 1)
+        time.sleep(0.1)
+        lgpio.gpio_write(self._gpio_handle, trigger_pin, 0)
+        self.logger.info("Trigger pin test complete")
+            
+        self.logger.info("Ultrasonic sensor GPIO initialized successfully")
 
     @with_error_handling("ultrasonic")
     def get_distance(self) -> Optional[float]:
@@ -79,6 +90,7 @@ class UltrasonicSensor:
         start_time = time.time()
         while lgpio.gpio_read(self._gpio_handle, echo_pin) == 0:
             if time.time() - start_time > 0.1:  # Timeout after 100ms
+                self.logger.warning("Timeout waiting for echo start")
                 return None
             time.sleep(0.00001)
         pulse_start = time.time()
@@ -86,6 +98,7 @@ class UltrasonicSensor:
         # Wait for echo to end
         while lgpio.gpio_read(self._gpio_handle, echo_pin) == 1:
             if time.time() - pulse_start > 0.1:  # Timeout after 100ms
+                self.logger.warning("Timeout waiting for echo end")
                 return None
             time.sleep(0.00001)
         pulse_end = time.time()
@@ -94,7 +107,7 @@ class UltrasonicSensor:
         pulse_duration = pulse_end - pulse_start
         distance = (pulse_duration * 34300) / 2
         
-        self.logger.debug(f"Distance measured: {distance:.1f} cm")
+        self.logger.debug(f"Distance measurement: pulse_duration={pulse_duration:.6f}s, distance={distance:.1f}cm")
         return distance
 
     @with_error_handling("ultrasonic")
@@ -109,9 +122,8 @@ class UltrasonicSensor:
         if distance is None:
             return False
             
-        # If distance is significantly less than expected ground distance,
-        # it's likely an obstacle
-        is_obstacle = distance < (self.config.ground_distance - self.config.error_threshold)
+        # If distance is less than obstacle threshold, it's an obstacle
+        is_obstacle = distance < self.config.obstacle_threshold
         
         if is_obstacle:
             self.logger.info(f"Obstacle detected at {distance:.1f} cm")
