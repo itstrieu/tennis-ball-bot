@@ -34,7 +34,7 @@ class CameraManager:
         self._initialized = False
         self._frame_lock = asyncio.Lock()
         self._frame_buffer = None
-        self._frame_queue = asyncio.Queue(maxsize=1)
+        self._frame_queue = None  # Will be initialized in initialize()
         self._update_task = None
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
@@ -42,13 +42,13 @@ class CameraManager:
         self._stream_consumers = set()
 
     @with_error_handling("camera_manager")
-    def start(self) -> None:
-        """Start the camera manager synchronously."""
-        if self.camera is not None:
-            self.logger.warning("Camera already initialized")
+    async def initialize(self):
+        """Initialize the camera and its components."""
+        if self._initialized:
             return
             
         try:
+            # Initialize camera
             self.camera = Picamera2()
             self.camera.configure(
                 self.camera.create_video_configuration(
@@ -56,30 +56,25 @@ class CameraManager:
                 )
             )
             self.camera.start()
+            
+            # Initialize frame queue in the current event loop
+            self._frame_queue = asyncio.Queue(maxsize=1)
+            
+            # Start frame update task
+            self._update_task = asyncio.create_task(self._update_frame())
+            
             self._initialized = True
             self.logger.info("Camera initialized successfully")
+            self.logger.info("Camera frame update task started")
         except Exception as e:
             self.logger.error(f"Failed to initialize camera: {str(e)}")
             raise RobotError(f"Camera initialization failed: {str(e)}", "camera_manager")
 
     @with_error_handling("camera_manager")
-    async def initialize(self) -> None:
-        """Initialize the camera with configuration asynchronously."""
-        if not self._initialized:
-            self.start()
-            
-        try:
-            self._update_task = asyncio.get_event_loop().create_task(self._update_frame())
-            self.logger.info("Camera frame update task started")
-        except Exception as e:
-            self.logger.error(f"Failed to start frame update task: {str(e)}")
-            raise RobotError(f"Frame update task failed: {str(e)}", "camera_manager")
-
-    @with_error_handling("camera_manager")
     async def get_frame(self):
         """Get a frame from the camera with proper synchronization."""
         if not self._initialized:
-            self.start()
+            await self.initialize()
             
         try:
             # Get frame from queue

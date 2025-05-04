@@ -245,7 +245,7 @@ class StreamServer:
                 
                 # Create encoder and output
                 encoder = MJPEGEncoder()
-                output = FileOutput()
+                output = io.BytesIO()  # Use BytesIO instead of FileOutput
                 encoder.output = output
                 
                 try:
@@ -256,6 +256,8 @@ class StreamServer:
                             continue
                         
                         # Encode frame
+                        output.seek(0)  # Reset buffer position
+                        output.truncate()  # Clear buffer
                         encoder.encode(frame, None)  # Pass None as request parameter
                         encoded_frame = output.getvalue()
                         
