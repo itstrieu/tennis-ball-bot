@@ -100,7 +100,7 @@ class RobotController:
                 self.state_machine.update(ball_data)
                 
                 # Decide and execute action
-                action = self._decide_action(ball_data)
+                action = self.decider.decide(ball_data)
                 self.execute_motion(action)
                 
                 # Development mode slowdown
@@ -113,18 +113,6 @@ class RobotController:
             raise RobotError(f"Control loop failed: {str(e)}", "robot_controller")
         finally:
             self.cleanup()
-
-    @with_error_handling("robot_controller")
-    def _decide_action(self, ball_data: Optional[Tuple[float, float]]) -> str:
-        """Decide next action based on current state and ball data."""
-        if self._emergency_stop:
-            return "stop"
-            
-        if ball_data is None:
-            return self.decider.decide(None, 0)
-            
-        offset, area = ball_data
-        return self.decider.decide(offset, area)
 
     @with_error_handling("robot_controller")
     def execute_motion(self, action: str):

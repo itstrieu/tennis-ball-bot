@@ -11,6 +11,7 @@ from threading import Thread, Event
 import logging
 import time
 import atexit
+import asyncio
 
 import uvicorn
 from utils.logger import Logger
@@ -137,7 +138,11 @@ class DemoRobot:
                 
             # Stop camera and streaming
             if self.stream_server:
-                self.stream_server.stop()
+                # Create an event loop to run the coroutine
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.stream_server.stop())
+                loop.close()
                 self.stream_server = None
                 
             if self.camera:

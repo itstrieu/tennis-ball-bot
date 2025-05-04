@@ -96,7 +96,8 @@ class VisionTracker:
             frame: Input frame to process
             
         Returns:
-            List of bounding boxes for detected tennis balls
+            List[Tuple[float, float, float, float]]: List of bounding boxes (x, y, w, h) for detected tennis balls,
+                                                    or None if no balls detected
             
         Raises:
             RobotError: If detection fails
@@ -117,9 +118,9 @@ class VisionTracker:
             self.logger.debug(f"[DEBUG] Raw predictions: {len(predictions)}")
             self.logger.debug(f"[DEBUG] Tennis balls found: {len(tennis_balls)}")
 
-            # If no tennis balls are detected, return an empty list
+            # If no tennis balls are detected, return None
             if not tennis_balls:
-                return []
+                return None
 
             # Return the list of bounding boxes for tennis balls
             return [bbox for (bbox, conf, label) in tennis_balls]

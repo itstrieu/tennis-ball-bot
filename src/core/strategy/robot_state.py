@@ -6,7 +6,7 @@ Defines states, transitions, and state-specific behavior.
 """
 
 from enum import Enum, auto
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 import logging
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -41,22 +41,22 @@ class RobotStateMachine:
         self._recovery_attempts = 0
 
     @with_error_handling("state_machine")
-    def update(self, ball_data: Optional[Tuple[float, float]]) -> None:
+    def update(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> None:
         """
         Update the state machine with new ball detection data.
         
         Args:
-            ball_data: Tuple of (offset, area) if ball detected, None otherwise
+            ball_data: List of bounding boxes if ball detected, None otherwise
         """
         self._handle_state_transition(ball_data)
         self._update_state_data(ball_data)
 
-    def _handle_state_transition(self, ball_data: Optional[Tuple[float, float]]) -> None:
+    def _handle_state_transition(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> None:
         """Handle state transitions based on current state and ball data."""
         if self.current_state == RobotState.ERROR:
             return  # Stay in error state until reset
 
-        if ball_data is None:
+        if ball_data is None or not ball_data:
             self._handle_no_ball()
         else:
             self._handle_ball_detected(ball_data)
@@ -78,9 +78,16 @@ class RobotStateMachine:
         elif self.current_state == RobotState.SEARCHING:
             self._search_count += 1
 
-    def _handle_ball_detected(self, ball_data: Tuple[float, float]) -> None:
+    def _handle_ball_detected(self, ball_data: List[Tuple[float, float, float, float]]) -> None:
         """Handle state transitions when a ball is detected."""
-        offset, area = ball_data
+        # Use the largest ball (by area)
+        largest_ball = max(ball_data, key=lambda bbox: bbox[2] * bbox[3])
+        x, y, w, h = largest_ball
+        
+        # Calculate offset and area
+        bbox_center_x = x + (w / 2)
+        offset = bbox_center_x - self.config.camera_offset - (self.config.frame_width / 2)
+        area = w * h
         
         if self.current_state == RobotState.SEARCHING:
             self._search_count = 0
@@ -95,9 +102,9 @@ class RobotStateMachine:
             if area > self.config.target_area * self.config.thresholds["stop"]:  # Ball is close enough
                 self._transition_to_state(RobotState.STOPPED)
 
-    def _update_state_data(self, ball_data: Optional[Tuple[float, float]]) -> None:
+    def _update_state_data(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> None:
         """Update state-specific data."""
-        if ball_data is not None:
+        if ball_data is not None and ball_data:
             self._last_ball_data = ball_data
 
     def _transition_to_state(self, new_state: RobotState) -> None:

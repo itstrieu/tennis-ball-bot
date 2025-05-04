@@ -7,7 +7,7 @@ the robot should move to approach and center the ball.
 
 import logging
 import time
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
@@ -33,22 +33,30 @@ class MovementDecider:
         self.max_no_ball_count = self.config.max_no_ball  # Use max_no_ball from config
 
     @with_error_handling("movement_decider")
-    def decide(self, offset: Optional[float], area: float) -> str:
+    def decide(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> str:
         """
         Decide next action based on current detection offset, size ratio, and no-ball history.
 
         Args:
-            offset (float|None): Horizontal distance of ball from center (None if no ball seen)
-            area (float): Bounding box area of the ball or last seen ball
+            ball_data: List of bounding boxes if ball detected, None otherwise
 
         Returns:
             str: One of the keys in movement_steps (e.g., 'small_forward', 'micro_left', 'search')
         """
-        ratio = area / self.config.target_area if self.config.target_area > 0 else 0
-
         # === Case 1: Ball is detected this frame ===
-        if offset is not None:
+        if ball_data is not None and ball_data:
             self.no_ball_count = 0
+            
+            # Use the largest ball (by area)
+            largest_ball = max(ball_data, key=lambda bbox: bbox[2] * bbox[3])
+            x, y, w, h = largest_ball
+            
+            # Calculate offset and area
+            bbox_center_x = x + (w / 2)
+            offset = bbox_center_x - self.config.camera_offset - (self.config.frame_width / 2)
+            area = w * h
+            ratio = area / self.config.target_area if self.config.target_area > 0 else 0
+            
             self.last_area = area
             self.last_seen_valid = True  # Mark that we just saw the ball
 
