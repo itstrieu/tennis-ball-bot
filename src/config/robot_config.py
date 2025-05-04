@@ -84,34 +84,34 @@ class RobotConfig:
         if self.pins is None:
             self.pins = {
                 "front_left": {
-                    "in1": 17,
-                    "in2": 27,
-                    "pwm": 22
+                    "in1": 21,  # DRIVER_1_BIN1
+                    "in2": 26,  # DRIVER_1_BIN2
+                    "pwm": 13,  # DRIVER_1_PWMB
                 },
                 "front_right": {
-                    "in1": 23,
-                    "in2": 24,
-                    "pwm": 25
+                    "in1": 16,  # DRIVER_1_AIN1
+                    "in2": 20,  # DRIVER_1_AIN2
+                    "pwm": 12,  # DRIVER_1_PWMA
                 },
                 "rear_left": {
-                    "in1": 5,
-                    "in2": 6,
-                    "pwm": 13
+                    "in1": 3,   # DRIVER_2_AIN1
+                    "in2": 4,   # DRIVER_2_AIN2
+                    "pwm": 6,   # DRIVER_2_PWMA
                 },
                 "rear_right": {
-                    "in1": 19,
-                    "in2": 26,
-                    "pwm": 12
+                    "in1": 22,  # DRIVER_2_BIN1
+                    "in2": 27,  # DRIVER_2_BIN2
+                    "pwm": 5,   # DRIVER_2_PWMB
                 },
                 "fins": {
-                    "L_EN": 16,
-                    "PWM_L": 20,
-                    "PWM_R": 21
+                    "L_EN": 14,
+                    "PWM_L": 18,
+                    "PWM_R": 19,
                 },
-                "standby": 4,
+                "standby": 17,  # STBY
                 "ultrasonic": {
-                    "trigger": 18,
-                    "echo": 7
+                    "trigger": 23,
+                    "echo": 24,
                 }
             }
 
