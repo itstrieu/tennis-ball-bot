@@ -37,10 +37,11 @@ class CameraManager:
         self._update_task = None
         self._last_frame_time = 0
         self._frame_interval = 1.0 / self.config.target_fps
+        self._loop = None
 
     @with_error_handling("camera_manager")
-    def initialize(self) -> None:
-        """Initialize the camera with configuration."""
+    def start(self) -> None:
+        """Start the camera manager synchronously."""
         if self.camera is not None:
             self.logger.warning("Camera already initialized")
             return
@@ -54,11 +55,24 @@ class CameraManager:
             )
             self.camera.start()
             self._initialized = True
-            self._update_task = asyncio.create_task(self._update_frame())
             self.logger.info("Camera initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize camera: {str(e)}")
             raise RobotError(f"Camera initialization failed: {str(e)}", "camera_manager")
+
+    @with_error_handling("camera_manager")
+    async def initialize(self) -> None:
+        """Initialize the camera with configuration asynchronously."""
+        if not self._initialized:
+            self.start()
+            
+        try:
+            self._loop = asyncio.get_event_loop()
+            self._update_task = self._loop.create_task(self._update_frame())
+            self.logger.info("Camera frame update task started")
+        except Exception as e:
+            self.logger.error(f"Failed to start frame update task: {str(e)}")
+            raise RobotError(f"Frame update task failed: {str(e)}", "camera_manager")
 
     async def _update_frame(self):
         """Update the frame buffer in a separate task."""
@@ -82,7 +96,7 @@ class CameraManager:
     async def get_frame(self):
         """Get a frame from the camera with proper synchronization."""
         if not self._initialized:
-            self.initialize()
+            self.start()
             
         try:
             await self._frame_available.wait()

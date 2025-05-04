@@ -56,15 +56,16 @@ class DemoRobot:
         self._original_sigterm = None
 
     @with_error_handling("demo_robot")
-    def initialize(self):
+    async def initialize(self):
         """Initialize all robot components."""
         try:
             # Initialize camera first
             self.camera = CameraManager(config=self.config)
-            self.camera.initialize()
+            self.camera.start()  # Synchronous camera start
+            await self.camera.initialize()  # Async frame update task start
             
             # Give camera time to stabilize
-            time.sleep(1)
+            await asyncio.sleep(1)
             
             # Initialize motion controller
             self.motion = MotionController()
@@ -98,31 +99,24 @@ class DemoRobot:
 
     @with_error_handling("demo_robot")
     def run(self):
-        """Run the robot and streaming server."""
-        if not all([self.camera, self.motion, self.vision, self.decider, self.robot, self.stream_server]):
-            self.initialize()
-            
+        """Run the robot demo."""
         try:
+            # Set up signal handlers
+            self._setup_signal_handlers()
+            
+            # Initialize components
+            asyncio.run(self.initialize())
+            
             # Start streaming server in a separate thread
-            self._server_thread = Thread(
-                target=lambda: uvicorn.run(
-                    self.stream_server.app,
-                    host="0.0.0.0",
-                    port=8000,
-                    log_level="info"
-                )
-            )
-            self._server_thread.daemon = True
-            self._server_thread.start()
+            self._start_streaming_server()
             
             # Run the robot
             self.robot.run()
             
         except Exception as e:
-            self.logger.error(f"Error during robot operation: {str(e)}")
-            raise RobotError(f"Robot operation failed: {str(e)}", "demo_robot")
-        finally:
+            self.logger.error(f"Error in demo_robot: {str(e)}")
             self.cleanup()
+            raise RobotError(f"Demo failed: {str(e)}", "demo_robot")
 
     @with_error_handling("demo_robot")
     def cleanup(self):
@@ -138,12 +132,16 @@ class DemoRobot:
                 
             # Stop camera and streaming
             if self.stream_server:
-                # Create an event loop to run the coroutine
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.stream_server.stop())
-                loop.close()
-                self.stream_server = None
+                try:
+                    # Create an event loop to run the coroutine
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.stream_server.stop())
+                    loop.close()
+                except Exception as e:
+                    self.logger.error(f"Error stopping stream server: {str(e)}")
+                finally:
+                    self.stream_server = None
                 
             if self.camera:
                 self.camera.cleanup()
@@ -152,6 +150,8 @@ class DemoRobot:
             # Wait for server thread to finish
             if self._server_thread and self._server_thread.is_alive():
                 self._server_thread.join(timeout=5.0)
+                if self._server_thread.is_alive():
+                    self.logger.warning("Stream server thread did not terminate cleanly")
                 
             # Restore original signal handlers
             if self._original_sigint:
@@ -166,28 +166,49 @@ class DemoRobot:
             self.logger.error(f"Error during cleanup: {str(e)}")
             raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
 
+    def _start_streaming_server(self):
+        """Start the streaming server in a separate thread."""
+        if not self.stream_server:
+            self.logger.error("Stream server not initialized")
+            return
+            
+        try:
+            self._server_thread = Thread(
+                target=lambda: asyncio.run(self.stream_server.start()),
+                daemon=True
+            )
+            self._server_thread.start()
+            self.logger.info("Streaming server started")
+        except Exception as e:
+            self.logger.error(f"Failed to start streaming server: {str(e)}")
+            raise RobotError(f"Stream server start failed: {str(e)}", "demo_robot")
+
+    def _setup_signal_handlers(self):
+        """Set up signal handlers for graceful shutdown."""
+        if self._original_sigint is not None:
+            return  # Already set up
+            
+        def handle_signal(signum, frame):
+            self.logger.info(f"Received signal {signum}, initiating shutdown")
+            self.cleanup()
+            sys.exit(0)
+            
+        # Store original signal handlers
+        self._original_sigint = signal.getsignal(signal.SIGINT)
+        self._original_sigterm = signal.getsignal(signal.SIGTERM)
+        
+        # Set new signal handlers
+        signal.signal(signal.SIGINT, handle_signal)
+        signal.signal(signal.SIGTERM, handle_signal)
+        
+        # Register cleanup with atexit
+        atexit.register(self.cleanup)
+
 
 def main():
     """Main entry point for the demo robot."""
     # Create and run the demo robot
     demo = DemoRobot()
-    
-    # Set up signal handlers
-    def handle_signal(signum, frame):
-        demo.logger.info(f"Received signal {signum}, initiating shutdown")
-        demo.cleanup()
-        sys.exit(0)
-        
-    # Store original signal handlers
-    demo._original_sigint = signal.getsignal(signal.SIGINT)
-    demo._original_sigterm = signal.getsignal(signal.SIGTERM)
-    
-    # Set new signal handlers
-    signal.signal(signal.SIGINT, handle_signal)
-    signal.signal(signal.SIGTERM, handle_signal)
-    
-    # Register cleanup with atexit
-    atexit.register(demo.cleanup)
     
     # Run the robot
     demo.run()

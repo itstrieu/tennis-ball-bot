@@ -45,12 +45,14 @@ class StreamServer:
         self.vision = None
         self.app = FastAPI()
         self.jpeg_stream = JpegStream(self.config)
+        self._stream_lock = asyncio.Lock()
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
         """Set the camera and vision components."""
         self.camera = camera
         self.vision = vision
+        self.jpeg_stream.set_camera(camera)
 
     def _setup_routes(self):
         """Set up FastAPI routes."""
@@ -116,34 +118,43 @@ class StreamServer:
               </div>
               <img id="stream" src="" alt="Live camera feed"/>
               <script>
-                const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
+                let ws = null;
                 const img = document.getElementById('stream');
                 const status = document.getElementById('status');
                 
-                ws.binaryType = 'blob';
-                ws.onmessage = e => {
-                  const url = URL.createObjectURL(e.data);
-                  img.src = url;
-                  setTimeout(()=>URL.revokeObjectURL(url),100);
-                };
+                function connectWebSocket() {
+                  ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
+                  ws.binaryType = 'blob';
+                  
+                  ws.onmessage = e => {
+                    const url = URL.createObjectURL(e.data);
+                    img.src = url;
+                    setTimeout(()=>URL.revokeObjectURL(url),100);
+                  };
+                  
+                  ws.onopen = () => {
+                    status.textContent = 'WebSocket connected';
+                    status.style.background = '#e8f5e9';
+                    status.style.color = '#2e7d32';
+                  };
+                  
+                  ws.onclose = () => {
+                    status.textContent = 'WebSocket disconnected - reconnecting...';
+                    status.style.background = '#fff3e0';
+                    status.style.color = '#e65100';
+                    setTimeout(connectWebSocket, 1000);  // Reconnect after 1 second
+                  };
+                  
+                  ws.onerror = () => {
+                    status.textContent = 'WebSocket error - reconnecting...';
+                    status.style.background = '#ffebee';
+                    status.style.color = '#c62828';
+                    ws.close();  // Force close to trigger reconnection
+                  };
+                }
                 
-                ws.onopen = () => {
-                  status.textContent = 'WebSocket connected';
-                  status.style.background = '#e8f5e9';
-                  status.style.color = '#2e7d32';
-                };
-                
-                ws.onclose = () => {
-                  status.textContent = 'WebSocket disconnected';
-                  status.style.background = '#ffebee';
-                  status.style.color = '#c62828';
-                };
-                
-                ws.onerror = () => {
-                  status.textContent = 'WebSocket error';
-                  status.style.background = '#ffebee';
-                  status.style.color = '#c62828';
-                };
+                // Initial connection
+                connectWebSocket();
                 
                 async function startStream() {
                   try {
@@ -227,63 +238,94 @@ class StreamServer:
 
         @self.app.websocket("/ws")
         @with_error_handling("stream_server")
-        async def websocket_endpoint(ws: WebSocket):
-            """Handle WebSocket connections for video streaming."""
+        async def websocket_endpoint(websocket: WebSocket):
+            """WebSocket endpoint for real-time video streaming."""
             try:
-                await ws.accept()
-                self.jpeg_stream.connections.add(ws)
+                await websocket.accept()
+                self.jpeg_stream.connections.add(websocket)
+                self.logger.info("New WebSocket connection established")
                 
-                # Wait for stream to start
-                while not self.jpeg_stream.active:
-                    await asyncio.sleep(0.1)
+                # Send initial frame from buffer if available
+                async with self.jpeg_stream._frame_buffer_lock:
+                    if self.jpeg_stream._frame_buffer:
+                        try:
+                            await websocket.send_bytes(self.jpeg_stream._frame_buffer[-1])
+                        except Exception as e:
+                            self.logger.error(f"Error sending initial frame: {str(e)}")
                 
-                # Keep connection alive and handle frames
+                # Keep connection alive with pings
                 while True:
                     try:
-                        # Send ping to keep connection alive
-                        await ws.send_json({"type": "ping"})
-                        
-                        # Wait for next frame
-                        frame = await self.jpeg_stream.output.read()
-                        await ws.send_bytes(frame)
-                        
-                        # Control frame rate
-                        await asyncio.sleep(self.jpeg_stream.frame_interval)
+                        await asyncio.sleep(5)  # Send ping every 5 seconds
+                        await websocket.send_text("ping")
                     except Exception as e:
-                        self.logger.error(f"WebSocket error: {str(e)}")
+                        self.logger.error(f"Error sending ping: {str(e)}")
                         break
+                    
             except Exception as e:
-                self.logger.error(f"WebSocket connection error: {str(e)}")
+                self.logger.error(f"WebSocket error: {str(e)}")
             finally:
-                self.jpeg_stream.connections.discard(ws)
+                self.jpeg_stream.connections.discard(websocket)
                 if not self.jpeg_stream.connections:
                     await self.jpeg_stream.stop()
+                self.logger.info("WebSocket connection closed")
 
     @with_error_handling("stream_server")
     async def start(self, host="0.0.0.0", port=8000):
         """Start the streaming server."""
-        try:
-            config = uvicorn.Config(
-                self.app,
-                host=host,
-                port=port,
-                log_level="info"
-            )
-            server = uvicorn.Server(config)
-            await server.serve()
-        except Exception as e:
-            self.logger.error(f"Failed to start server: {str(e)}")
-            raise RobotError(f"Server start failed: {str(e)}", "stream_server")
+        async with self._stream_lock:
+            try:
+                if not self.camera:
+                    raise RobotError("Camera not available", "stream_server")
+                    
+                # Verify camera is ready
+                try:
+                    test_frame = await self.camera.get_frame()
+                    if test_frame is None:
+                        raise RobotError("Camera not capturing frames", "stream_server")
+                except Exception as e:
+                    raise RobotError(f"Camera verification failed: {str(e)}", "stream_server")
+                    
+                # Start the stream
+                await self.jpeg_stream.start()
+                
+                # Start the server
+                config = uvicorn.Config(
+                    self.app,
+                    host=host,
+                    port=port,
+                    log_level="info",
+                    timeout_keep_alive=30
+                )
+                server = uvicorn.Server(config)
+                self.logger.info(f"Starting streaming server on {host}:{port}")
+                await server.serve()
+            except Exception as e:
+                self.logger.error(f"Failed to start server: {str(e)}")
+                await self.stop()  # Ensure cleanup on failure
+                raise RobotError(f"Server start failed: {str(e)}", "stream_server")
 
     @with_error_handling("stream_server")
     async def stop(self):
         """Stop the streaming server."""
-        try:
-            await self.jpeg_stream.stop()
-            self.logger.info("Streaming server stopped")
-        except Exception as e:
-            self.logger.error(f"Failed to stop server: {str(e)}")
-            raise RobotError(f"Server stop failed: {str(e)}", "stream_server")
+        async with self._stream_lock:
+            try:
+                # Stop the JPEG stream
+                if self.jpeg_stream.active:
+                    await self.jpeg_stream.stop()
+                    
+                # Close all WebSocket connections
+                for ws in list(self.jpeg_stream.connections):
+                    try:
+                        await ws.close()
+                    except Exception as e:
+                        self.logger.error(f"Error closing WebSocket connection: {str(e)}")
+                        
+                self.jpeg_stream.connections.clear()
+                self.logger.info("Streaming server stopped")
+            except Exception as e:
+                self.logger.error(f"Failed to stop server: {str(e)}")
+                raise RobotError(f"Server stop failed: {str(e)}", "stream_server")
 
 
 class StreamingOutput(io.BufferedIOBase):
@@ -292,93 +334,109 @@ class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
         self.frame = None
         self.condition = Condition()
+        self._closed = False
 
     def write(self, buf):
         """Write frame to stream."""
+        if self._closed:
+            return
+            
         with self.condition:
             self.frame = buf
             self.condition.notify_all()
 
     async def read(self):
         """Read next frame from stream."""
+        if self._closed:
+            raise IOError("Stream is closed")
+            
         with self.condition:
-            self.condition.wait()
-            return self.frame
+            if self.frame is None:
+                self.condition.wait()
+            frame = self.frame
+            self.frame = None  # Clear frame after reading
+            return frame
+
+    def close(self):
+        """Close the stream."""
+        with self.condition:
+            self._closed = True
+            self.condition.notify_all()
 
 
 class JpegStream:
-    """Manages JPEG encoding and streaming of video frames."""
+    """Handles JPEG streaming of frames."""
     
-    def __init__(self, config=None):
-        self.config = config or default_config
+    def __init__(self, config):
+        self.config = config
+        self.logger = Logger.get_logger(name="jpeg_stream", log_level=logging.INFO)
+        self.camera = None
         self.active = False
         self.connections = set()
-        self.task = None
-        self.output = StreamingOutput()
-        self.encoder = MJPEGEncoder(quality=self.config.streaming_quality)
-        self.frame_timeout = 2.0  # 2 second timeout for frame capture
-        self.target_fps = self.config.streaming_fps
-        self.frame_interval = 1.0 / self.target_fps
-        self.last_frame_time = 0
-        self.frame_buffer = asyncio.Queue(maxsize=self.config.frame_buffer_size)
-        self.logger = Logger.get_logger(name="stream", log_level=logging.INFO)
+        self._frame_buffer = []
+        self._frame_buffer_lock = asyncio.Lock()
+        self._frame_buffer_size = self.config.frame_buffer_size
+        self._frame_interval = 1.0 / self.config.streaming_fps
+        self._last_frame_time = 0
 
-    async def start(self):
-        """Start the JPEG stream."""
-        if self.active:
-            return
-            
-        self.active = True
-        self.task = asyncio.create_task(self._stream_frames())
-
-    async def stop(self):
-        """Stop the JPEG stream."""
-        self.active = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-        self.task = None
+    def set_camera(self, camera):
+        """Set the camera reference."""
+        self.camera = camera
 
     async def _stream_frames(self):
         """Stream frames to connected clients."""
         while self.active:
             try:
-                current_time = time.time()
-                if current_time - self.last_frame_time < self.frame_interval:
-                    await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+                # Get frame from camera
+                frame = await self.camera.get_frame()
+                if frame is None:
+                    await asyncio.sleep(0.1)
                     continue
 
-                # Use wait_for to handle frame capture timeouts
-                frame = await asyncio.wait_for(self.output.read(), timeout=self.frame_timeout)
-                self.last_frame_time = current_time
-                
+                # Encode frame to JPEG
+                ret, jpeg = cv2.imencode('.jpg', frame, 
+                    [cv2.IMWRITE_JPEG_QUALITY, self.config.streaming_quality])
+                if not ret:
+                    self.logger.error("Failed to encode frame to JPEG")
+                    continue
+
                 # Add frame to buffer
-                try:
-                    self.frame_buffer.put_nowait(frame)
-                except asyncio.QueueFull:
-                    # If buffer is full, remove oldest frame
+                async with self._frame_buffer_lock:
+                    if len(self._frame_buffer) >= self._frame_buffer_size:
+                        self._frame_buffer.pop(0)
+                    self._frame_buffer.append(jpeg.tobytes())
+
+                # Send frame to all connected clients
+                for ws in list(self.connections):
                     try:
-                        await self.frame_buffer.get()
-                        await self.frame_buffer.put(frame)
+                        await ws.send_bytes(jpeg.tobytes())
                     except Exception as e:
-                        self.logger.error(f"Error managing frame buffer: {str(e)}")
-                
-                # Send buffered frames to clients
-                while not self.frame_buffer.empty():
-                    buffered_frame = await self.frame_buffer.get()
-                    for ws in list(self.connections):  # Create a copy of connections to avoid modification during iteration
-                        try:
-                            await ws.send_bytes(buffered_frame)
-                        except Exception as e:
-                            self.logger.error(f"Error sending frame to client: {str(e)}")
-                            self.connections.discard(ws)
-                            
-            except asyncio.TimeoutError:
-                self.logger.warning("Frame capture timed out, retrying...")
-                await asyncio.sleep(0.1)
+                        self.logger.error(f"Error sending frame to client: {str(e)}")
+                        self.connections.discard(ws)
+
+                # Control frame rate
+                current_time = time.time()
+                elapsed = current_time - self._last_frame_time
+                if elapsed < self._frame_interval:
+                    await asyncio.sleep(self._frame_interval - elapsed)
+                self._last_frame_time = time.time()
+
             except Exception as e:
-                self.logger.error(f"Error streaming frame: {str(e)}")
+                self.logger.error(f"Error in frame streaming: {str(e)}")
                 await asyncio.sleep(0.1)
+
+    async def start(self):
+        """Start the stream."""
+        if not self.camera:
+            raise RobotError("Camera not set", "jpeg_stream")
+        self.active = True
+        self._last_frame_time = time.time()
+        asyncio.create_task(self._stream_frames())
+        self.logger.info("JPEG stream started")
+
+    async def stop(self):
+        """Stop the stream."""
+        self.active = False
+        async with self._frame_buffer_lock:
+            self._frame_buffer.clear()
+        self.logger.info("JPEG stream stopped")
