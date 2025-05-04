@@ -1,43 +1,42 @@
 """
 demo_robot.py
 
-Main entry point for the robot demo. Initializes all components and starts the robot.
-Also sets up the streaming server for camera feed.
+Main entry point for the robot demo.
+Initializes and runs the robot components.
 """
 
-import signal
-import sys
-from threading import Thread, Event
-import logging
-import time
-import atexit
 import asyncio
+import signal
+import atexit
+import logging
+from typing import Optional
 
-import uvicorn
+from src.app.camera_manager import CameraManager
+from src.core.navigation.motion_controller import MotionController
+from src.core.vision.vision_tracker import VisionTracker
+from src.core.navigation.movement_decider import MovementDecider
+from src.app.robot_controller import RobotController
+from src.streaming.stream_server import StreamServer
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
-from src.app.camera_manager import CameraManager
-from src.app.robot_controller import RobotController
-from src.core.navigation.motion_controller import MotionController
-from src.core.detection.vision_tracker import VisionTracker
-from src.core.strategy.movement_decider import MovementDecider
-from src.streaming.stream_server import StreamServer
 
 
 class DemoRobot:
     """
-    Main demo robot class that manages all components and their lifecycle.
+    Manages the lifecycle of the robot components.
+    Handles initialization, running, and cleanup of the robot.
     
     Attributes:
         config: RobotConfig instance for configuration values
+        logger: Logger instance
         camera: CameraManager instance
         motion: MotionController instance
         vision: VisionTracker instance
         decider: MovementDecider instance
-        robot: RobotController instance
+        controller: RobotController instance
         stream_server: StreamServer instance
-        logger: Logger instance
+        _main_loop: asyncio event loop for main operations
     """
     
     def __init__(self, config=None):
@@ -47,187 +46,123 @@ class DemoRobot:
         self.motion = None
         self.vision = None
         self.decider = None
-        self.robot = None
+        self.controller = None
         self.stream_server = None
-        self._cleanup_complete = False
-        self._stop_event = Event()
-        self._server_thread = None
-        self._original_sigint = None
-        self._original_sigterm = None
+        self._main_loop = None
+        self._setup_signal_handlers()
 
-    @with_error_handling("demo_robot")
+    def _setup_signal_handlers(self):
+        """Set up signal handlers for graceful shutdown."""
+        def handle_signal(signum, frame):
+            self.logger.info(f"Received signal {signum}, initiating shutdown")
+            if self._main_loop:
+                self._main_loop.create_task(self.cleanup())
+                
+        signal.signal(signal.SIGINT, handle_signal)
+        signal.signal(signal.SIGTERM, handle_signal)
+        
+        # Register cleanup with atexit
+        atexit.register(lambda: asyncio.run(self.cleanup()))
+
     async def initialize(self):
         """Initialize all robot components."""
         try:
-            # Initialize camera first
-            self.camera = CameraManager(config=self.config)
-            await self.camera.initialize()  # Initialize camera and start frame update task
+            # Create main event loop
+            self._main_loop = asyncio.get_event_loop()
             
-            # Give camera time to stabilize
-            await asyncio.sleep(1)
+            # Initialize camera
+            self.camera = CameraManager(self.config)
+            await self.camera.initialize()
             
             # Initialize motion controller
-            self.motion = MotionController()
-            self.motion.fin_on(speed=self.config.fin_speed)
+            self.motion = MotionController(self.config)
+            await self.motion.initialize()
             
             # Initialize vision tracker
-            self.vision = VisionTracker(config=self.config)
-            await self.vision.set_camera(self.camera)
+            self.vision = VisionTracker(self.config)
+            await self.vision.initialize()
             
             # Initialize movement decider
-            self.decider = MovementDecider(config=self.config)
+            self.decider = MovementDecider(self.config)
+            await self.decider.initialize()
             
             # Initialize robot controller
-            self.robot = RobotController(
-                motion=self.motion,
-                vision=self.vision,
-                decider=self.decider,
-                config=self.config
+            self.controller = RobotController(
+                self.config,
+                self.camera,
+                self.motion,
+                self.vision,
+                self.decider
             )
+            await self.controller.initialize()
             
             # Initialize streaming server
-            self.stream_server = StreamServer(config=self.config)
+            self.stream_server = StreamServer(self.config)
             self.stream_server.set_components(self.camera, self.vision)
             
             self.logger.info("All components initialized successfully")
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize components: {str(e)}")
-            await self.cleanup()  # Make cleanup async
+            self.logger.error(f"Error initializing components: {str(e)}")
+            await self.cleanup()
             raise RobotError(f"Initialization failed: {str(e)}", "demo_robot")
 
-    @with_error_handling("demo_robot")
     async def run(self):
         """Run the robot demo."""
         try:
-            # Set up signal handlers
-            self._setup_signal_handlers()
-            
             # Start streaming server
-            self._start_streaming_server()
+            self.logger.info("Streaming server started")
+            await self.stream_server.start()
             
             # Run robot controller
-            await self.robot.run()
+            await self.controller.run()
             
         except Exception as e:
             self.logger.error(f"Error running demo: {str(e)}")
-            self.cleanup()
+            await self.cleanup()
             raise RobotError(f"Demo run failed: {str(e)}", "demo_robot")
 
-    @with_error_handling("demo_robot")
     async def cleanup(self):
-        """Clean up all resources."""
-        if self._cleanup_complete:
-            return
-            
+        """Clean up all robot components."""
         try:
-            # Stop motion first
-            if self.motion:
-                self.motion.fin_off()
-                self.motion = None
-                
-            # Stop camera and streaming
             if self.stream_server:
-                try:
-                    # Use the current event loop
-                    await self.stream_server.stop()
-                except Exception as e:
-                    self.logger.error(f"Error stopping stream server: {str(e)}")
-                finally:
-                    self.stream_server = None
+                await self.stream_server.stop()
+                self.logger.info("Streaming server stopped")
+                
+            if self.controller:
+                await self.controller.cleanup()
+                
+            if self.decider:
+                await self.decider.cleanup()
+                
+            if self.vision:
+                await self.vision.cleanup()
+                
+            if self.motion:
+                await self.motion.cleanup()
                 
             if self.camera:
-                self.camera.cleanup()
-                self.camera = None
+                await self.camera.cleanup()
                 
-            # Wait for server thread to finish
-            if self._server_thread and self._server_thread.is_alive():
-                self._server_thread.join(timeout=5.0)
-                if self._server_thread.is_alive():
-                    self.logger.warning("Stream server thread did not terminate cleanly")
-                
-            # Restore original signal handlers
-            if self._original_sigint:
-                signal.signal(signal.SIGINT, self._original_sigint)
-            if self._original_sigterm:
-                signal.signal(signal.SIGTERM, self._original_sigterm)
-                
-            self._cleanup_complete = True
             self.logger.info("Cleanup completed successfully")
             
         except Exception as e:
             self.logger.error(f"Error during cleanup: {str(e)}")
             raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
 
-    def _start_streaming_server(self):
-        """Start the streaming server in a separate thread."""
-        if not self.stream_server:
-            self.logger.error("Stream server not initialized")
-            return
-            
-        try:
-            # Create a new event loop for the server thread
-            def run_server():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(self.stream_server.start())
-                except Exception as e:
-                    self.logger.error(f"Error in streaming server thread: {str(e)}")
-                finally:
-                    loop.close()
-                    
-            self._server_thread = Thread(target=run_server, daemon=True)
-            self._server_thread.start()
-            self.logger.info("Streaming server started")
-        except Exception as e:
-            self.logger.error(f"Failed to start streaming server: {str(e)}")
-            raise RobotError(f"Stream server start failed: {str(e)}", "demo_robot")
 
-    def _setup_signal_handlers(self):
-        """Set up signal handlers for graceful shutdown."""
-        if self._original_sigint is not None:
-            return  # Already set up
-            
-        def handle_signal(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating shutdown")
-            # Run cleanup in the event loop
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(self.cleanup())
-            sys.exit(0)
-            
-        # Store original signal handlers
-        self._original_sigint = signal.getsignal(signal.SIGINT)
-        self._original_sigterm = signal.getsignal(signal.SIGTERM)
-        
-        # Set new signal handlers
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
-        
-        # Register cleanup with atexit
-        atexit.register(lambda: asyncio.get_event_loop().run_until_complete(self.cleanup()))
-
-
-def main():
-    """Main entry point for the demo robot."""
-    # Create and run the demo robot
-    demo = DemoRobot()
-    
-    # Create a single event loop for all operations
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
+async def main():
+    """Main entry point for the robot demo."""
     try:
-        # Initialize and run the robot using the same event loop
-        loop.run_until_complete(demo.initialize())
-        loop.run_until_complete(demo.run())
+        # Create and run robot
+        robot = DemoRobot()
+        await robot.initialize()
+        await robot.run()
+        
     except Exception as e:
         Logger.get_logger(name="main", log_level=logging.ERROR).error(f"Error in main: {str(e)}")
-    finally:
-        # Ensure cleanup runs in the main event loop
-        loop.run_until_complete(demo.cleanup())
-        loop.close()
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

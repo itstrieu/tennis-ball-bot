@@ -44,12 +44,20 @@ class StreamServer:
         self.app = FastAPI()
         self._stream_lock = asyncio.Lock()
         self._stream_consumers = set()
+        self._stream_loop = None
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
         """Set the camera and vision components."""
         self.camera = camera
         self.vision = vision
+
+    async def _get_frame(self):
+        """Get frame from camera in the correct event loop context."""
+        if self._stream_loop is None:
+            self._stream_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._stream_loop)
+        return await self.camera.get_frame()
 
     def _setup_routes(self):
         """Set up FastAPI routes."""
@@ -242,16 +250,14 @@ class StreamServer:
                 if not self.camera._streaming:
                     await self.camera.start_streaming()
                 
-                # Use OpenCV to encode frame as JPEG for streaming
-
                 try:
                     while True:
-                        # Get frame from camera
-                        frame = await self.camera.get_frame()
+                        # Get frame from camera in the correct event loop context
+                        frame = await self._get_frame()
                         if frame is None:
                             continue
                         
-                        # Encode frame as JPEG for streaming (does NOT affect inference)
+                        # Encode frame as JPEG for streaming
                         ret, jpeg = cv2.imencode('.jpg', frame)
                         if not ret:
                             continue
