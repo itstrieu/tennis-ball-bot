@@ -51,7 +51,6 @@ class CameraManager:
         self._stream_consumers = set()
         self._frame_update_task = None
         self._stream_loop = None
-        self._queue_lock = threading.Lock()
 
     async def initialize(self):
         """Initialize the camera and its components."""
@@ -88,13 +87,11 @@ class CameraManager:
             raise RobotError("Camera not initialized", "camera_manager")
             
         try:
-            # Wait for a frame with timeout
-            try:
-                frame = await asyncio.wait_for(self._frame_queue.get(), timeout=1.0)
-                self._frame_queue.task_done()
+            # Get frame from camera directly
+            frame = self.camera.capture_array()
+            if frame is not None:
                 return frame
-            except asyncio.TimeoutError:
-                return None
+            return None
         except Exception as e:
             raise RobotError(f"Frame capture failed: {str(e)}", "camera_manager")
 

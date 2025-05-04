@@ -60,7 +60,11 @@ class StreamServer:
             raise RobotError("Camera not available", "stream_server")
             
         try:
-            return await self.camera.get_frame()
+            # Get frame directly from camera
+            frame = self.camera.camera.capture_array()
+            if frame is not None:
+                return frame
+            return None
         except Exception as e:
             self.logger.error(f"Error getting frame: {str(e)}")
             raise RobotError(f"Frame capture failed: {str(e)}", "stream_server")
@@ -293,59 +297,62 @@ class StreamServer:
                 raise
 
     async def start(self):
-        """Start the streaming server in a separate thread."""
-        if self._server_thread is not None and self._server_thread.is_alive():
-            self.logger.warning("Streaming server is already running")
+        """Start the streaming server."""
+        if self._server_thread is not None:
+            self.logger.warning("Stream server already running")
             return
-
-        # Ensure camera is ready
-        if not self.camera:
-            raise RobotError("Camera not available", "stream_server")
             
-        # Start camera streaming if not already started
-        if not self.camera._streaming:
+        if not self.camera:
+            self.logger.warning("Camera not available - streaming disabled")
+            return
+            
+        try:
+            # Start camera streaming
             await self.camera.start_streaming()
-            self.logger.info("Camera streaming started")
-
-        # Create a new event loop for the server thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Start the server in a separate thread
-        self._server_thread = threading.Thread(
-            target=self._run_server,
-            daemon=True
-        )
-        self._server_thread.start()
-        self.logger.info("Streaming server started in background thread")
+            
+            # Create server thread
+            self._server_thread = threading.Thread(target=self._run_server)
+            self._server_thread.daemon = True
+            self._server_thread.start()
+            
+            self.logger.info("Stream server started")
+        except Exception as e:
+            self.logger.error(f"Failed to start stream server: {str(e)}")
+            raise RobotError(f"Stream server start failed: {str(e)}", "stream_server")
 
     def _run_server(self):
-        """Run the uvicorn server in the background thread."""
+        """Run the server in a separate thread."""
         try:
-            config = uvicorn.Config(
+            uvicorn.run(
                 self.app,
                 host="0.0.0.0",
                 port=8000,
                 log_level="info"
             )
-            server = uvicorn.Server(config)
-            server.run()
         except Exception as e:
-            self.logger.error(f"Error running streaming server: {str(e)}")
-            raise
+            self.logger.error(f"Server thread error: {str(e)}")
 
     async def stop(self):
         """Stop the streaming server."""
-        if self._server_thread is None or not self._server_thread.is_alive():
+        if self._server_thread is None:
             return
-
-        # Signal the server to stop
-        self._should_stop = True
-        
-        # Wait for the server thread to finish
-        self._server_thread.join(timeout=5.0)
-        if self._server_thread.is_alive():
-            self.logger.warning("Streaming server did not stop gracefully")
-        
-        self._server_thread = None
-        self.logger.info("Streaming server stopped")
+            
+        try:
+            # Stop camera streaming
+            await self.camera.stop_streaming()
+            
+            # Signal server to stop
+            self._should_stop = True
+            
+            # Wait for server thread to finish
+            if self._server_thread.is_alive():
+                self._server_thread.join(timeout=5.0)
+                if self._server_thread.is_alive():
+                    self.logger.warning("Server thread did not stop gracefully")
+            
+            self._server_thread = None
+            self._should_stop = False
+            self.logger.info("Stream server stopped")
+        except Exception as e:
+            self.logger.error(f"Failed to stop stream server: {str(e)}")
+            raise RobotError(f"Stream server stop failed: {str(e)}", "stream_server")
