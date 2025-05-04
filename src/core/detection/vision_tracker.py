@@ -1,4 +1,17 @@
 # src/core/detection/vision_tracker.py
+"""
+vision_tracker.py
+
+Handles tennis ball detection and tracking using YOLO model and camera input.
+Provides real-time ball detection and position analysis.
+
+This module provides:
+- YOLO model integration for object detection
+- Camera frame capture and processing
+- Ball position and size analysis
+- Error handling and logging
+"""
+
 from .yolo_inference import YOLOInference
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -13,6 +26,19 @@ class VisionTracker:
     """
     Tracks tennis balls using YOLO model and camera input.
     
+    This class provides:
+    - Real-time ball detection using YOLO
+    - Frame capture and processing
+    - Ball position and size analysis
+    - Error handling and logging
+    
+    The tracker implements the following workflow:
+    1. Initializes YOLO model and camera
+    2. Captures frames from camera
+    3. Processes frames through YOLO model
+    4. Filters detections for tennis balls
+    5. Analyzes ball position and size
+    
     Attributes:
         model: YOLOInference instance for object detection
         frame_width: Width of the camera frame
@@ -20,11 +46,17 @@ class VisionTracker:
         conf_threshold: Confidence threshold for detections
         camera: Shared camera instance
         logger: Logger instance
+        _initialized: Whether the tracker is initialized
     """
     
     def __init__(self, config=None):
         """
         Initialize vision tracker with configuration.
+        
+        This method:
+        1. Sets up configuration
+        2. Initializes logging
+        3. Sets default values
         
         Args:
             config: Optional RobotConfig instance
@@ -39,7 +71,17 @@ class VisionTracker:
         self.conf_threshold = self.config.confidence_threshold
 
     async def initialize(self):
-        """Initialize the vision tracker components."""
+        """
+        Initialize the vision tracker components.
+        
+        This method:
+        1. Loads YOLO model
+        2. Sets initialization flag
+        3. Handles errors
+        
+        Raises:
+            RobotError: If initialization fails
+        """
         try:
             # Load YOLO model
             self.model = YOLOInference(self.config.vision_model_path, config=self.config)
@@ -51,7 +93,20 @@ class VisionTracker:
 
     @with_error_handling("vision_tracker")
     async def set_camera(self, camera):
-        """Set the shared camera instance."""
+        """
+        Set the shared camera instance.
+        
+        This method:
+        1. Validates YOLO model
+        2. Tests camera access
+        3. Sets initialization flag
+        
+        Args:
+            camera: CameraManager instance
+            
+        Raises:
+            RobotError: If camera setup fails
+        """
         if self.model is None:
             raise RobotError("YOLO model not loaded", "vision_tracker")
             
@@ -71,6 +126,11 @@ class VisionTracker:
     async def get_frame(self):
         """
         Capture a frame from the shared camera.
+        
+        This method:
+        1. Validates initialization
+        2. Captures frame
+        3. Handles errors
         
         Returns:
             np.ndarray: The captured frame
@@ -94,6 +154,13 @@ class VisionTracker:
     async def detect_ball(self, frame):
         """
         Run YOLO model, filter for 'tennis_ball', return all detected tennis balls' bounding boxes.
+        
+        This method:
+        1. Validates initialization
+        2. Runs YOLO prediction
+        3. Filters tennis ball detections
+        4. Applies confidence threshold
+        5. Returns bounding boxes
         
         Args:
             frame: Input frame to process
@@ -136,6 +203,10 @@ class VisionTracker:
         """
         Calculates the area of the bounding box.
         
+        This method:
+        1. Extracts width and height
+        2. Calculates area
+        
         Args:
             bbox: Bounding box tuple (x, y, w, h)
             
@@ -151,6 +222,11 @@ class VisionTracker:
         Returns how far the object is from the robot's centerline (in pixels).
         Positive → object is to the right of center, negative → left.
         
+        This method:
+        1. Calculates bounding box center
+        2. Adjusts for camera offset
+        3. Computes offset from frame center
+        
         Args:
             bbox: Bounding box tuple (x, y, w, h)
             
@@ -164,7 +240,17 @@ class VisionTracker:
         
     @with_error_handling("vision_tracker")
     def cleanup(self):
-        """Clean up resources used by the vision tracker."""
+        """
+        Clean up resources used by the vision tracker.
+        
+        This method:
+        1. Validates initialization
+        2. Cleans up model resources
+        3. Resets initialization flag
+        
+        Raises:
+            RobotError: If cleanup fails
+        """
         if not self._initialized:
             return
             

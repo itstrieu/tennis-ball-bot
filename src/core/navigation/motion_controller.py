@@ -3,6 +3,12 @@ motion_controller.py
 
 Controls the robot's motion through GPIO and PWM.
 Manages wheel and fin motors for movement and steering.
+
+This module provides low-level control of the robot's motors:
+- Wheel motor control for movement
+- Fin motor control for steering
+- PWM speed control
+- Obstacle detection integration
 """
 
 import time
@@ -20,15 +26,30 @@ class MotionController:
     MotionController manages wheel and fin motors via GPIO and PWM.
     Front wheels are standard; rear wheels have omnidirectional rollers but are still driven.
 
+    This class provides:
+    - Motor control through GPIO and PWM
+    - Movement patterns for different actions
+    - Safety features and obstacle detection
+    - Resource management and cleanup
+
     Attributes:
         config: RobotConfig instance for configuration values
         speed: Base speed (0-100)
-        logger: Logger instance
+        _is_moving: Flag indicating if robot is in motion
+        _gpio_handle: Handle for GPIO operations
+        _pins_claimed: Flag for GPIO pin status
+        logger: Logger instance for logging operations
+        ultrasonic: UltrasonicSensor instance for obstacle detection
     """
 
     def __init__(self, config=None):
         """
         Initialize the motion controller.
+        
+        This method:
+        1. Sets up configuration
+        2. Initializes GPIO
+        3. Sets up ultrasonic sensor
         
         Args:
             config: Optional RobotConfig instance
@@ -53,7 +74,17 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def _initialize_gpio(self):
-        """Initialize GPIO and claim pins."""
+        """
+        Initialize GPIO and claim pins.
+        
+        This method:
+        1. Opens GPIO chip
+        2. Claims output pins
+        3. Enables motor driver
+        
+        Raises:
+            RobotError: If GPIO initialization fails
+        """
         if self._gpio_handle is None:
             self._gpio_handle = lgpio.gpiochip_open(0)
             
@@ -73,7 +104,17 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def _claim_output_pins(self):
-        """Claim and configure GPIO output pins."""
+        """
+        Claim and configure GPIO output pins.
+        
+        This method:
+        1. Claims pins for motor control
+        2. Configures pins as outputs
+        3. Handles both motor and control pins
+        
+        Raises:
+            RobotError: If GPIO is not initialized
+        """
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
             
@@ -102,12 +143,20 @@ class MotionController:
         """
         Set motor state and PWM speed.
         
+        This method:
+        1. Sets motor direction
+        2. Configures PWM speed
+        3. Handles motor stop condition
+        
         Args:
             in1: First control pin
             in2: Second control pin
             pwm: PWM pin
             direction: Direction (1 = forward, -1 = backward, 0 = stop)
             speed: PWM speed (0-100)
+            
+        Raises:
+            RobotError: If GPIO is not initialized
         """
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
@@ -142,9 +191,17 @@ class MotionController:
         """
         Move motors according to a pattern.
         
+        This method:
+        1. Enables motor driver
+        2. Applies movement pattern
+        3. Handles speed reduction for rear wheels
+        
         Args:
             pattern: Dictionary mapping motor IDs to directions
             speed: Optional speed override
+            
+        Raises:
+            RobotError: If motor driver enable fails
         """
         if not self._pins_claimed:
             self._initialize_gpio()
@@ -179,7 +236,18 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def move_forward(self, speed: Optional[int] = None, duration: Optional[float] = None):
-        """Move forward at specified speed for optional duration."""
+        """
+        Move forward at specified speed for optional duration.
+        
+        This method:
+        1. Checks for obstacles
+        2. Applies forward movement pattern
+        3. Handles duration-based movement
+        
+        Args:
+            speed: Optional speed override
+            duration: Optional movement duration in seconds
+        """
         self.logger.info(f"move_forward called with speed={speed}, duration={duration}")
         
         # Check for obstacles before moving
@@ -201,7 +269,13 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def move_backward(self, speed: Optional[int] = None, duration: Optional[float] = None):
-        """Move backward at specified speed for optional duration."""
+        """
+        Move backward at specified speed for optional duration.
+        
+        Args:
+            speed: Optional speed override
+            duration: Optional movement duration in seconds
+        """
         self.logger.info(f"move_backward called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": 1,   # FL
@@ -216,7 +290,13 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def rotate_left(self, speed: Optional[int] = None, duration: Optional[float] = None):
-        """Rotate left at specified speed for optional duration."""
+        """
+        Rotate left at specified speed for optional duration.
+        
+        Args:
+            speed: Optional speed override
+            duration: Optional movement duration in seconds
+        """
         self.logger.info(f"rotate_left called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": 1,   # FL
@@ -231,7 +311,13 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def rotate_right(self, speed: Optional[int] = None, duration: Optional[float] = None):
-        """Rotate right at specified speed for optional duration."""
+        """
+        Rotate right at specified speed for optional duration.
+        
+        Args:
+            speed: Optional speed override
+            duration: Optional movement duration in seconds
+        """
         self.logger.info(f"rotate_right called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": -1,  # FL
@@ -246,22 +332,29 @@ class MotionController:
 
     @with_error_handling("motion_controller")
     def stop(self, speed: int = 0, duration: Optional[float] = None):
-        """Stop all motors."""
+        """
+        Stop all motors.
+        
+        This method:
+        1. Stops all motors
+        2. Updates movement state
+        3. Handles optional duration
+        
+        Args:
+            speed: Speed to set (0 for stop)
+            duration: Optional delay before stopping
+        """
         self.logger.info("stop called")
-        if self._is_moving:
-            # First stop all motors
-            for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
-                pins = self.config.pins[motor_id]
-                lgpio.tx_pwm(self._gpio_handle, pins["pwm"], self.config.pwm_freq, 0)
-            
-            # Then disable motor driver
-            self._disable_motor_driver()
-            
-            self._is_moving = False
-            self.logger.debug("Motors stopped")
-            
         if duration:
             time.sleep(duration)
+            
+        self._is_moving = False
+        for motor_id in self.config.pins:
+            if isinstance(self.config.pins[motor_id], dict):
+                pins = self.config.pins[motor_id]
+                self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 0, speed)
+                
+        self.logger.info("All motors stopped")
 
     @with_error_handling("motion_controller")
     def search(self, speed: Optional[int] = None, duration: Optional[float] = None):

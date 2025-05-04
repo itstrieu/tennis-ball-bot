@@ -3,6 +3,12 @@ movement_decider.py
 
 Contains logic for interpreting ball position and size, and deciding how
 the robot should move to approach and center the ball.
+
+This module provides:
+- Ball position and size analysis
+- Movement decision making
+- Search and recovery strategies
+- State tracking for ball detection
 """
 
 import logging
@@ -16,15 +22,41 @@ from config.robot_config import default_config
 class MovementDecider:
     """
     Determines movement decisions based on object detection data.
-
+    
+    This class provides:
+    - Ball position and size analysis
+    - Movement decision making
+    - Search and recovery strategies
+    - State tracking for ball detection
+    
+    The decider uses a hierarchical approach:
+    1. Ball detection and size analysis
+    2. Position offset calculation
+    3. Movement decision based on thresholds
+    4. Search and recovery strategies when ball is lost
+    
     Attributes:
-        config (RobotConfig): Configuration for the movement decider
-        no_ball_count (int): Counter for how many frames have lacked ball detection
-        last_area (float): Area of the last seen ball
-        last_seen_valid (bool): Whether the last ball detection was valid
+        config: RobotConfig instance for configuration values
+        no_ball_count: Counter for consecutive frames without ball detection
+        last_area: Area of the last seen ball
+        last_seen_valid: Whether the last ball detection was valid
+        max_no_ball_count: Maximum frames without ball before search
+        _initialized: Flag for initialization state
+        logger: Logger instance for logging operations
     """
 
     def __init__(self, config=None):
+        """
+        Initialize the movement decider.
+        
+        This method:
+        1. Sets up configuration
+        2. Initializes state tracking
+        3. Configures logging
+        
+        Args:
+            config: Optional RobotConfig instance
+        """
         self.config = config or default_config
         self.logger = Logger.get_logger(name="decider", log_level=logging.INFO)
         self.no_ball_count = 0  # Tracks how many consecutive frames had no ball
@@ -34,7 +66,17 @@ class MovementDecider:
         self._initialized = False
 
     async def initialize(self):
-        """Initialize the movement decider components."""
+        """
+        Initialize the movement decider components.
+        
+        This method:
+        1. Sets initialization flag
+        2. Verifies configuration
+        3. Prepares for operation
+        
+        Raises:
+            RobotError: If initialization fails
+        """
         try:
             self._initialized = True
             self.logger.info("Movement decider initialized successfully")
@@ -43,7 +85,17 @@ class MovementDecider:
             raise RobotError(f"Movement decider initialization failed: {str(e)}", "movement_decider")
 
     async def cleanup(self):
-        """Clean up resources used by the movement decider."""
+        """
+        Clean up resources used by the movement decider.
+        
+        This method:
+        1. Resets state tracking
+        2. Clears initialization flag
+        3. Handles cleanup errors
+        
+        Raises:
+            RobotError: If cleanup fails
+        """
         try:
             self._initialized = False
             self.logger.info("Movement decider cleaned up successfully")
@@ -55,22 +107,39 @@ class MovementDecider:
     def decide(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> str:
         """
         Decide next action based on current detection offset, size ratio, and no-ball history.
-
+        
+        This method implements a hierarchical decision-making process:
+        1. Ball detection and size analysis
+        2. Position offset calculation
+        3. Movement decision based on thresholds
+        4. Search and recovery strategies when ball is lost
+        
+        The decision hierarchy:
+        - Stop if ball is close enough
+        - Move forward if centered (speed based on distance)
+        - Rotate to center if off-center
+        - Take blind step if ball was just lost
+        - Enter search mode if ball lost for too long
+        
         Args:
             ball_data: List of bounding boxes if ball detected, None otherwise
-
+                      Each box is (x, y, width, height)
+            
         Returns:
             str: One of the keys in movement_steps (e.g., 'small_forward', 'micro_left', 'search')
+            
+        Raises:
+            RobotError: If decision making fails
         """
         # === Case 1: Ball is detected this frame ===
         if ball_data is not None and ball_data:
             self.no_ball_count = 0
             
-            # Use the largest ball (by area)
+            # Use the largest ball (by area) to handle multiple detections
             largest_ball = max(ball_data, key=lambda bbox: bbox[2] * bbox[3])
             x, y, w, h = largest_ball
             
-            # Calculate offset and area
+            # Calculate offset from center and area ratio
             bbox_center_x = x + (w / 2)
             offset = bbox_center_x - self.config.camera_offset - (self.config.frame_width / 2)
             area = w * h
@@ -79,12 +148,12 @@ class MovementDecider:
             self.last_area = area
             self.last_seen_valid = True  # Mark that we just saw the ball
 
-            # 1. Stop if the ball is close enough
+            # 1. Stop if the ball is close enough (based on size ratio)
             if ratio >= self.config.thresholds["stop"]:
                 self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
                 return "stop"
 
-            # 2. If centered, move forward (how much depends on distance)
+            # 2. If centered, move forward (speed depends on distance)
             if abs(offset) <= self.config.center_threshold:
                 if ratio >= self.config.thresholds["micro"]:
                     self.logger.info(
@@ -97,7 +166,7 @@ class MovementDecider:
                     )
                     return "small_forward"
 
-            # 3. If off-center, rotate to center
+            # 3. If off-center, rotate to center (speed depends on offset)
             if abs(offset) > self.config.center_threshold:
                 if abs(offset) > self.config.center_threshold * 2:
                     choice = "step_left" if offset < 0 else "step_right"

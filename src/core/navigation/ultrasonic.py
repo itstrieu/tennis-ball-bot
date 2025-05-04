@@ -2,6 +2,13 @@
 ultrasonic.py
 
 Handles ultrasonic sensor operations for obstacle detection.
+Provides distance measurement and obstacle detection capabilities.
+
+This module provides:
+- Distance measurement using HC-SR04 ultrasonic sensor
+- Obstacle detection with configurable thresholds
+- GPIO management for sensor operations
+- Error handling and resource cleanup
 """
 
 import time
@@ -16,15 +23,34 @@ class UltrasonicSensor:
     """
     UltrasonicSensor manages the HC-SR04 ultrasonic sensor for obstacle detection.
     The sensor is mounted at an angle to distinguish between ground and obstacles.
+    
+    This class provides:
+    - Distance measurement in centimeters
+    - Obstacle detection with configurable thresholds
+    - GPIO pin management for trigger and echo
+    - Resource cleanup and error handling
+    
+    Attributes:
+        config: RobotConfig instance for configuration values
+        _gpio_handle: Handle for GPIO operations
+        logger: Logger instance for logging operations
     """
     
     def __init__(self, config=None, gpio_handle=None):
         """
         Initialize the ultrasonic sensor.
         
+        This method:
+        1. Sets up configuration
+        2. Initializes GPIO
+        3. Configures trigger and echo pins
+        
         Args:
             config: Optional RobotConfig instance
             gpio_handle: Optional GPIO handle from MotionController
+            
+        Raises:
+            RobotError: If initialization fails
         """
         self.config = config or default_config
         self._gpio_handle = gpio_handle
@@ -38,7 +64,18 @@ class UltrasonicSensor:
 
     @with_error_handling("ultrasonic")
     def _initialize_gpio(self):
-        """Initialize GPIO for ultrasonic sensor."""
+        """
+        Initialize GPIO for ultrasonic sensor.
+        
+        This method:
+        1. Opens GPIO chip if needed
+        2. Configures trigger pin as output
+        3. Configures echo pin as input
+        4. Tests trigger functionality
+        
+        Raises:
+            RobotError: If GPIO initialization fails
+        """
         if self._gpio_handle is None:
             self._gpio_handle = lgpio.gpiochip_open(0)
             self.logger.info("Opened GPIO chip")
@@ -59,7 +96,7 @@ class UltrasonicSensor:
             raise RobotError(f"Failed to claim echo pin {echo_pin}", "ultrasonic")
         self.logger.info(f"Claimed echo pin {echo_pin}")
             
-        # Test trigger pin
+        # Test trigger pin functionality
         lgpio.gpio_write(self._gpio_handle, trigger_pin, 1)
         time.sleep(0.1)
         lgpio.gpio_write(self._gpio_handle, trigger_pin, 0)
@@ -72,8 +109,17 @@ class UltrasonicSensor:
         """
         Get distance measurement from ultrasonic sensor.
         
+        This method:
+        1. Sends a trigger pulse
+        2. Measures echo pulse duration
+        3. Calculates distance based on sound speed
+        4. Handles timeouts and errors
+        
         Returns:
             Distance in centimeters, or None if measurement failed
+            
+        Raises:
+            RobotError: If GPIO is not initialized
         """
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "ultrasonic")
@@ -81,12 +127,12 @@ class UltrasonicSensor:
         trigger_pin = self.config.pins["ultrasonic"]["trigger"]
         echo_pin = self.config.pins["ultrasonic"]["echo"]
         
-        # Send trigger pulse
+        # Send 10 microsecond trigger pulse
         lgpio.gpio_write(self._gpio_handle, trigger_pin, 1)
         time.sleep(0.00001)  # 10 microseconds
         lgpio.gpio_write(self._gpio_handle, trigger_pin, 0)
         
-        # Wait for echo to start
+        # Wait for echo to start with timeout
         start_time = time.time()
         while lgpio.gpio_read(self._gpio_handle, echo_pin) == 0:
             if time.time() - start_time > 0.1:  # Timeout after 100ms
@@ -95,7 +141,7 @@ class UltrasonicSensor:
             time.sleep(0.00001)
         pulse_start = time.time()
         
-        # Wait for echo to end
+        # Wait for echo to end with timeout
         while lgpio.gpio_read(self._gpio_handle, echo_pin) == 1:
             if time.time() - pulse_start > 0.1:  # Timeout after 100ms
                 self.logger.warning("Timeout waiting for echo end")
@@ -103,9 +149,9 @@ class UltrasonicSensor:
             time.sleep(0.00001)
         pulse_end = time.time()
         
-        # Calculate distance (speed of sound = 34300 cm/s)
+        # Calculate distance using speed of sound (34300 cm/s)
         pulse_duration = pulse_end - pulse_start
-        distance = (pulse_duration * 34300) / 2
+        distance = (pulse_duration * 34300) / 2  # Divide by 2 for round trip
         
         self.logger.debug(f"Distance measurement: pulse_duration={pulse_duration:.6f}s, distance={distance:.1f}cm")
         return distance
@@ -115,6 +161,11 @@ class UltrasonicSensor:
         """
         Check if there's an obstacle in front of the robot.
         
+        This method:
+        1. Gets distance measurement
+        2. Compares with obstacle threshold
+        3. Logs obstacle detection
+        
         Returns:
             True if obstacle detected, False otherwise
         """
@@ -122,7 +173,7 @@ class UltrasonicSensor:
         if distance is None:
             return False
             
-        # If distance is less than obstacle threshold, it's an obstacle
+        # Check if distance is less than configured threshold
         is_obstacle = distance < self.config.obstacle_threshold
         
         if is_obstacle:
@@ -131,10 +182,21 @@ class UltrasonicSensor:
 
     @with_error_handling("ultrasonic")
     def cleanup(self):
-        """Clean up GPIO resources."""
+        """
+        Clean up GPIO resources.
+        
+        This method:
+        1. Releases ultrasonic pins
+        2. Clears GPIO handle
+        3. Handles cleanup errors
+        
+        Raises:
+            RobotError: If cleanup fails
+        """
         if self._gpio_handle is not None:
             try:
-                # Only release ultrasonic pins, don't close the handle
+                # Release ultrasonic pins but don't close the handle
+                # (handle is managed by MotionController)
                 trigger_pin = self.config.pins["ultrasonic"]["trigger"]
                 echo_pin = self.config.pins["ultrasonic"]["echo"]
                 lgpio.gpio_free(self._gpio_handle, trigger_pin)

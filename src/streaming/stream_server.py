@@ -3,6 +3,11 @@ stream_server.py
 
 FastAPI server for streaming camera feed and providing debug information.
 Handles WebSocket connections for real-time video streaming.
+
+This module provides a web interface for:
+- Live video streaming from the robot's camera
+- Debug information about the robot's state
+- Control over the streaming process
 """
 
 import io
@@ -29,15 +34,31 @@ class StreamServer:
     Manages the streaming server and its components.
     Uses the camera's streaming architecture for efficient frame delivery.
     
+    This class provides:
+    - WebSocket-based video streaming
+    - Debug information endpoints
+    - Stream control endpoints
+    - HTML interface for monitoring
+    
     Attributes:
         config: RobotConfig instance for configuration values
-        camera: CameraManager instance
-        vision: VisionTracker instance
-        logger: Logger instance
-        app: FastAPI application
+        camera: CameraManager instance for frame capture
+        vision: VisionTracker instance for debug information
+        logger: Logger instance for logging operations
+        app: FastAPI application instance
+        _stream_lock: asyncio.Lock for thread-safe streaming
+        _stream_consumers: set of active WebSocket connections
+        _server_thread: Thread running the FastAPI server
+        _should_stop: Flag for graceful shutdown
     """
     
     def __init__(self, config=None):
+        """
+        Initialize the StreamServer with optional configuration.
+        
+        Args:
+            config: Optional RobotConfig instance. If None, uses default_config.
+        """
         self.config = config or default_config
         self.logger = Logger.get_logger(name="stream", log_level=logging.INFO)
         self.camera = None
@@ -50,17 +71,31 @@ class StreamServer:
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
-        """Set the camera and vision components."""
+        """
+        Set the required components for streaming.
+        
+        Args:
+            camera: CameraManager instance for frame capture
+            vision: Optional VisionTracker instance for debug info
+        """
         self.camera = camera
         self.vision = vision
 
     async def _get_frame(self):
-        """Get frame from camera."""
+        """
+        Get the latest frame from the camera.
+        
+        Returns:
+            Optional[np.ndarray]: The latest camera frame or None if capture fails
+            
+        Raises:
+            RobotError: If camera is not available or frame capture fails
+        """
         if not self.camera:
             raise RobotError("Camera not available", "stream_server")
             
         try:
-            # Get frame directly from camera
+            # Capture frame directly from camera
             frame = self.camera.camera.capture_array()
             if frame is not None:
                 return frame
@@ -70,15 +105,30 @@ class StreamServer:
             raise RobotError(f"Frame capture failed: {str(e)}", "stream_server")
 
     def _setup_routes(self):
-        """Set up FastAPI routes."""
+        """
+        Set up FastAPI routes and endpoints.
+        
+        This method configures:
+        - HTML interface for streaming
+        - WebSocket endpoint for video frames
+        - Debug information endpoint
+        - Stream control endpoints
+        """
         @self.app.get("/", response_class=HTMLResponse)
         async def index():
+            """
+            Serve the HTML interface for streaming.
+            
+            Returns:
+                HTMLResponse: The streaming interface HTML page
+            """
             return """
             <!DOCTYPE html>
             <html>
             <head>
               <title>Tennis Ball Bot • Live Stream</title>
               <style>
+                /* Modern, responsive styling for the streaming interface */
                 body { 
                   font-family: Arial, sans-serif; 
                   text-align: center; 
@@ -133,20 +183,24 @@ class StreamServer:
               </div>
               <img id="stream" src="" alt="Live camera feed"/>
               <script>
+                // WebSocket connection management
                 let ws = null;
                 const img = document.getElementById('stream');
                 const status = document.getElementById('status');
                 
                 function connectWebSocket() {
+                  // Establish WebSocket connection
                   ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host + '/ws');
                   ws.binaryType = 'blob';
                   
+                  // Handle incoming frames
                   ws.onmessage = e => {
                     const url = URL.createObjectURL(e.data);
                     img.src = url;
                     setTimeout(()=>URL.revokeObjectURL(url),100);
                   };
                   
+                  // Connection status handling
                   ws.onopen = () => {
                     status.textContent = 'WebSocket connected';
                     status.style.background = '#e8f5e9';
@@ -157,20 +211,21 @@ class StreamServer:
                     status.textContent = 'WebSocket disconnected - reconnecting...';
                     status.style.background = '#fff3e0';
                     status.style.color = '#e65100';
-                    setTimeout(connectWebSocket, 1000);  // Reconnect after 1 second
+                    setTimeout(connectWebSocket, 1000);  // Auto-reconnect
                   };
                   
                   ws.onerror = () => {
                     status.textContent = 'WebSocket error - reconnecting...';
                     status.style.background = '#ffebee';
                     status.style.color = '#c62828';
-                    ws.close();  // Force close to trigger reconnection
+                    ws.close();  // Force reconnection
                   };
                 }
                 
                 // Initial connection
                 connectWebSocket();
                 
+                // Stream control functions
                 async function startStream() {
                   try {
                     const response = await fetch('/start', {method: 'POST'});
@@ -206,7 +261,12 @@ class StreamServer:
         @self.app.get("/debug")
         @with_error_handling("stream_server")
         def debug():
-            """Return debug information about the robot's state."""
+            """
+            Return debug information about the robot's state.
+            
+            Returns:
+                dict: Debug information including detections, frame count, and FPS
+            """
             if not self.vision:
                 return {"error": "Vision tracker not available"}
                 
@@ -223,7 +283,15 @@ class StreamServer:
         @self.app.post("/start")
         @with_error_handling("stream_server")
         async def start_stream():
-            """Start the video stream."""
+            """
+            Start the video stream.
+            
+            Returns:
+                dict: Status of the streaming operation
+                
+            Raises:
+                RobotError: If camera is not available or stream start fails
+            """
             if not self.camera:
                 raise RobotError("Camera not available", "stream_server")
                 
@@ -237,7 +305,15 @@ class StreamServer:
         @self.app.post("/stop")
         @with_error_handling("stream_server")
         async def stop_stream():
-            """Stop the video stream."""
+            """
+            Stop the video stream.
+            
+            Returns:
+                dict: Status of the streaming operation
+                
+            Raises:
+                RobotError: If stream stop fails
+            """
             try:
                 await self.camera.stop_streaming()
                 return {"status": "stopped"}
@@ -248,86 +324,88 @@ class StreamServer:
         @self.app.websocket("/ws")
         @with_error_handling("stream_server")
         async def websocket_endpoint(websocket: WebSocket):
-            """WebSocket endpoint for streaming camera feed."""
+            """
+            Handle WebSocket connections for video streaming.
+            
+            This endpoint:
+            1. Accepts WebSocket connections
+            2. Sends video frames to connected clients
+            3. Handles client disconnection
+            4. Manages stream consumer registration
+            
+            Args:
+                websocket: WebSocket connection instance
+            """
+            await websocket.accept()
+            self._stream_consumers.add(websocket)
+            
             try:
-                await websocket.accept()
-                self.logger.info("WebSocket connection accepted")
-                
-                # Register as a stream consumer
-                await self.camera.register_stream_consumer()
-                
-                # Start camera streaming if not already started
-                if not self.camera._streaming:
-                    await self.camera.start_streaming()
-                
-                try:
-                    while True:
-                        # Get frame from camera in the correct event loop context
-                        frame = await self._get_frame()
-                        if frame is None:
-                            continue
+                while True:
+                    # Get latest frame
+                    frame = await self._get_frame()
+                    if frame is None:
+                        continue
                         
-                        # Encode frame as JPEG for streaming
-                        ret, jpeg = cv2.imencode('.jpg', frame)
-                        if not ret:
-                            continue
-                        try:
-                            await websocket.send_bytes(jpeg.tobytes())
-                        except WebSocketDisconnect:
-                            break
-                        
-                        # Small sleep to prevent CPU hogging
-                        await asyncio.sleep(0.001)
-                        
-                except WebSocketDisconnect:
-                    self.logger.info("WebSocket disconnected")
-                except Exception as e:
-                    self.logger.error(f"Error in WebSocket stream: {str(e)}")
-                    raise
-                finally:
-                    # Cleanup
-                    await self.camera.unregister_stream_consumer()
-                    if not self.camera._stream_consumers:
-                        await self.camera.stop_streaming()
-                    try:
-                        await websocket.close()
-                    except:
-                        pass
+                    # Convert frame to JPEG
+                    _, buffer = cv2.imencode('.jpg', frame, 
+                        [cv2.IMWRITE_JPEG_QUALITY, self.config.streaming_quality])
                     
+                    # Send frame to client
+                    await websocket.send_bytes(buffer.tobytes())
+                    
+            except WebSocketDisconnect:
+                self._stream_consumers.remove(websocket)
             except Exception as e:
                 self.logger.error(f"WebSocket error: {str(e)}")
-                try:
-                    await websocket.close()
-                except:
-                    pass
-                raise
+                self._stream_consumers.remove(websocket)
+                await websocket.close()
 
     async def start(self):
-        """Start the streaming server."""
-        if self._server_thread is not None:
-            self.logger.warning("Stream server already running")
-            return
-            
-        if not self.camera:
-            self.logger.warning("Camera not available - streaming disabled")
+        """
+        Start the streaming server.
+        
+        This method:
+        1. Creates a new thread for the FastAPI server
+        2. Configures the server with appropriate settings
+        3. Starts the server in the background
+        
+        Raises:
+            RobotError: If server start fails
+        """
+        if self._server_thread and self._server_thread.is_alive():
             return
             
         try:
-            # Start camera streaming
-            await self.camera.start_streaming()
+            # Configure server settings
+            config = uvicorn.Config(
+                self.app,
+                host="0.0.0.0",
+                port=8000,
+                log_level="info"
+            )
             
-            # Create server thread
-            self._server_thread = threading.Thread(target=self._run_server)
-            self._server_thread.daemon = True
+            # Create and start server in new thread
+            server = uvicorn.Server(config)
+            self._server_thread = threading.Thread(
+                target=server.run,
+                daemon=True
+            )
             self._server_thread.start()
             
-            self.logger.info("Stream server started")
+            self.logger.info("Streaming server started")
         except Exception as e:
-            self.logger.error(f"Failed to start stream server: {str(e)}")
-            raise RobotError(f"Stream server start failed: {str(e)}", "stream_server")
+            self.logger.error(f"Failed to start server: {str(e)}")
+            raise RobotError(f"Server start failed: {str(e)}", "stream_server")
 
     def _run_server(self):
-        """Run the server in a separate thread."""
+        """
+        Run the FastAPI server.
+        
+        This method is called in a separate thread and:
+        1. Runs the uvicorn server
+        2. Handles server lifecycle
+        3. Manages graceful shutdown
+        """
         try:
             uvicorn.run(
                 self.app,
@@ -336,29 +414,25 @@ class StreamServer:
                 log_level="info"
             )
         except Exception as e:
-            self.logger.error(f"Server thread error: {str(e)}")
+            self.logger.error(f"Server error: {str(e)}")
 
     async def stop(self):
-        """Stop the streaming server."""
-        if self._server_thread is None:
-            return
-            
+        """
+        Stop the streaming server.
+        
+        This method:
+        1. Signals the server to stop
+        2. Waits for the server thread to finish
+        3. Cleans up resources
+        
+        Raises:
+            RobotError: If server stop fails
+        """
         try:
-            # Stop camera streaming
-            await self.camera.stop_streaming()
-            
-            # Signal server to stop
             self._should_stop = True
-            
-            # Wait for server thread to finish
-            if self._server_thread.is_alive():
-                self._server_thread.join(timeout=5.0)
-                if self._server_thread.is_alive():
-                    self.logger.warning("Server thread did not stop gracefully")
-            
-            self._server_thread = None
-            self._should_stop = False
-            self.logger.info("Stream server stopped")
+            if self._server_thread:
+                self._server_thread.join(timeout=5)
+            self.logger.info("Streaming server stopped")
         except Exception as e:
-            self.logger.error(f"Failed to stop stream server: {str(e)}")
-            raise RobotError(f"Stream server stop failed: {str(e)}", "stream_server")
+            self.logger.error(f"Failed to stop server: {str(e)}")
+            raise RobotError(f"Server stop failed: {str(e)}", "stream_server")

@@ -3,6 +3,12 @@ robot_state.py
 
 Implements a state machine for the robot's behavior.
 Defines states, transitions, and state-specific behavior.
+
+This module provides:
+- State machine implementation for robot behavior
+- State transition logic
+- State-specific data management
+- Error handling and recovery
 """
 
 from enum import Enum, auto
@@ -13,7 +19,18 @@ from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
 
 class RobotState(Enum):
-    """Possible states of the robot."""
+    """
+    Possible states of the robot.
+    
+    States:
+    - INITIALIZING: Initial setup state
+    - SEARCHING: Looking for a ball
+    - APPROACHING: Moving toward a detected ball
+    - CENTERING: Adjusting position to center on ball
+    - RECOVERING: Lost sight of ball, trying to recover
+    - STOPPED: Ball is close enough to stop
+    - ERROR: Error state requiring intervention
+    """
     INITIALIZING = auto()
     SEARCHING = auto()      # Looking for a ball
     APPROACHING = auto()    # Moving toward a detected ball
@@ -26,9 +43,44 @@ class RobotStateMachine:
     """
     State machine for controlling robot behavior.
     Manages state transitions and state-specific behavior.
+    
+    This class provides:
+    - State transition management
+    - State-specific data tracking
+    - Error handling and recovery
+    - State query methods
+    
+    The state machine implements the following behavior:
+    1. Starts in SEARCHING state
+    2. Transitions to CENTERING when ball is detected
+    3. Moves to APPROACHING when ball is centered
+    4. Enters STOPPED when ball is close enough
+    5. Handles recovery when ball is lost
+    6. Manages error states and recovery
+    
+    Attributes:
+        config: RobotConfig instance for configuration values
+        current_state: Current state of the robot
+        previous_state: Previous state before last transition
+        error_message: Error message if in ERROR state
+        _search_count: Counter for search attempts
+        _last_ball_data: Last known ball position and size
+        _recovery_attempts: Counter for recovery attempts
+        logger: Logger instance for logging operations
     """
 
     def __init__(self, config=None):
+        """
+        Initialize the state machine.
+        
+        This method:
+        1. Sets up configuration
+        2. Initializes state tracking
+        3. Configures logging
+        
+        Args:
+            config: Optional RobotConfig instance
+        """
         self.config = config or default_config
         self.logger = Logger.get_logger(name="state", log_level=logging.INFO)
         self.current_state = RobotState.SEARCHING
@@ -45,14 +97,33 @@ class RobotStateMachine:
         """
         Update the state machine with new ball detection data.
         
+        This method:
+        1. Handles state transitions
+        2. Updates state-specific data
+        3. Manages error conditions
+        
         Args:
             ball_data: List of bounding boxes if ball detected, None otherwise
+                      Each box is (x, y, width, height)
+            
+        Raises:
+            RobotError: If state update fails
         """
         self._handle_state_transition(ball_data)
         self._update_state_data(ball_data)
 
     def _handle_state_transition(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> None:
-        """Handle state transitions based on current state and ball data."""
+        """
+        Handle state transitions based on current state and ball data.
+        
+        This method:
+        1. Checks for error state
+        2. Routes to appropriate handler based on ball detection
+        3. Manages state transitions
+        
+        Args:
+            ball_data: List of bounding boxes if ball detected, None otherwise
+        """
         if self.current_state == RobotState.ERROR:
             return  # Stay in error state until reset
 
@@ -62,7 +133,15 @@ class RobotStateMachine:
             self._handle_ball_detected(ball_data)
 
     def _handle_no_ball(self) -> None:
-        """Handle state transitions when no ball is detected."""
+        """
+        Handle state transitions when no ball is detected.
+        
+        This method:
+        1. Transitions APPROACHING/CENTERING to RECOVERING
+        2. Moves STOPPED to SEARCHING
+        3. Manages recovery attempts
+        4. Updates search count
+        """
         if self.current_state == RobotState.APPROACHING:
             self._transition_to_state(RobotState.RECOVERING)
         elif self.current_state == RobotState.CENTERING:
@@ -79,12 +158,22 @@ class RobotStateMachine:
             self._search_count += 1
 
     def _handle_ball_detected(self, ball_data: List[Tuple[float, float, float, float]]) -> None:
-        """Handle state transitions when a ball is detected."""
-        # Use the largest ball (by area)
+        """
+        Handle state transitions when a ball is detected.
+        
+        This method:
+        1. Analyzes ball position and size
+        2. Manages state transitions based on ball state
+        3. Resets recovery attempts when ball found
+        
+        Args:
+            ball_data: List of bounding boxes for detected balls
+        """
+        # Use the largest ball (by area) to handle multiple detections
         largest_ball = max(ball_data, key=lambda bbox: bbox[2] * bbox[3])
         x, y, w, h = largest_ball
         
-        # Calculate offset and area
+        # Calculate offset from center and area
         bbox_center_x = x + (w / 2)
         offset = bbox_center_x - self.config.camera_offset - (self.config.frame_width / 2)
         area = w * h
@@ -103,25 +192,61 @@ class RobotStateMachine:
                 self._transition_to_state(RobotState.STOPPED)
 
     def _update_state_data(self, ball_data: Optional[List[Tuple[float, float, float, float]]]) -> None:
-        """Update state-specific data."""
+        """
+        Update state-specific data.
+        
+        This method:
+        1. Updates last known ball data
+        2. Maintains state history
+        
+        Args:
+            ball_data: List of bounding boxes if ball detected, None otherwise
+        """
         if ball_data is not None and ball_data:
             self._last_ball_data = ball_data
 
     def _transition_to_state(self, new_state: RobotState) -> None:
-        """Transition to a new state with logging."""
+        """
+        Transition to a new state with logging.
+        
+        This method:
+        1. Updates state history
+        2. Logs state transition
+        3. Updates current state
+        
+        Args:
+            new_state: The state to transition to
+        """
         if new_state != self.current_state:
             self.previous_state = self.current_state
             self.current_state = new_state
             self.logger.info(f"State transition: {self.previous_state.name} -> {self.current_state.name}")
 
     def _transition_to_error(self, error_message: str) -> None:
-        """Transition to error state with error message."""
+        """
+        Transition to error state with error message.
+        
+        This method:
+        1. Sets error message
+        2. Transitions to ERROR state
+        3. Logs error condition
+        
+        Args:
+            error_message: Description of the error
+        """
         self.error_message = error_message
         self._transition_to_state(RobotState.ERROR)
         self.logger.error(f"Error state entered: {error_message}")
 
     def reset(self) -> None:
-        """Reset the state machine to initial state."""
+        """
+        Reset the state machine to initial state.
+        
+        This method:
+        1. Resets all state tracking
+        2. Clears error conditions
+        3. Returns to SEARCHING state
+        """
         self.current_state = RobotState.SEARCHING
         self.previous_state = None
         self.error_message = None

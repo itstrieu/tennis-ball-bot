@@ -1,3 +1,16 @@
+"""
+yolo_inference.py
+
+Provides YOLO model inference for object detection.
+Handles model loading, prediction, and resource management.
+
+This module provides:
+- YOLOv8 model integration
+- Object detection inference
+- Resource management
+- Error handling and logging
+"""
+
 from ultralytics import YOLO
 import numpy as np
 import logging
@@ -14,18 +27,38 @@ class YOLOInference:
     """
     YOLO model inference for object detection.
     
+    This class provides:
+    - YOLOv8 model loading and management
+    - Object detection inference
+    - Resource cleanup
+    - Context management
+    
+    The inference process:
+    1. Loads YOLOv8 model from file
+    2. Processes input frames
+    3. Returns detections with bounding boxes
+    4. Manages model resources
+    
     Attributes:
         model_path: Path to the YOLO model file
         model: Loaded YOLO model
         logger: Logger instance
+        _initialized: Whether the model is initialized
     """
     
     def __init__(self, model_path: str, config=None):
         """
         Loads YOLOv8 model from .pt file.
         
+        This method:
+        1. Sets up configuration
+        2. Initializes logging
+        3. Loads YOLO model
+        4. Handles errors
+        
         Args:
             model_path: Path to the YOLO model file
+            config: Optional RobotConfig instance
             
         Raises:
             RobotError: If model loading fails
@@ -49,6 +82,11 @@ class YOLOInference:
         """
         Load YOLOv8 model using Ultralytics.
         
+        This method:
+        1. Attempts to load model
+        2. Handles loading errors
+        3. Returns loaded model
+        
         Args:
             model_path: Path to the YOLO model file
             
@@ -69,6 +107,12 @@ class YOLOInference:
         """
         Run inference on a frame using YOLOv8.
 
+        This method:
+        1. Validates initialization
+        2. Runs model prediction
+        3. Processes detection results
+        4. Returns formatted detections
+        
         Args:
             frame (np.ndarray): Input image in BGR format
 
@@ -83,15 +127,18 @@ class YOLOInference:
             raise RobotError("YOLO model not initialized", "yolo_inference")
             
         try:
+            # Run YOLO prediction
             results = self.model.predict(frame, verbose=False)[0]
             detections = []
 
+            # Process each detection
             for box in results.boxes:
+                # Extract confidence and class
                 conf = float(box.conf)
                 cls_id = int(box.cls)
                 label = self.model.names[cls_id]
 
-                # Convert to (x, y, w, h)
+                # Convert bounding box format
                 x1, y1, x2, y2 = box.xyxy[0]
                 x, y = float(x1), float(y1)
                 w, h = float(x2 - x1), float(y2 - y1)
@@ -133,17 +180,33 @@ class YOLOInference:
             raise RobotError(f"Cleanup failed: {str(e)}", "yolo_inference")
             
     def __enter__(self):
-        """Context manager entry."""
+        """
+        Context manager entry.
+        
+        Returns:
+            YOLOInference: This instance
+        """
         return self
         
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - ensures cleanup."""
+        """
+        Context manager exit - ensures cleanup.
+        
+        Args:
+            exc_type: Exception type if raised
+            exc_val: Exception value if raised
+            exc_tb: Exception traceback if raised
+        """
         self.cleanup()
         
     @contextmanager
     def inference_context(self):
         """
         Context manager for inference operations.
+        
+        This method:
+        1. Yields the YOLO instance
+        2. Ensures cleanup on exit
         
         Usage:
             with yolo.inference_context():

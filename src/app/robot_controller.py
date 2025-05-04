@@ -3,6 +3,12 @@ robot_controller.py
 
 Main control logic for the robot. Coordinates vision, motion, and decision-making
 to perform search-and-retrieve behaviors for tennis balls using a camera feed.
+
+This module implements the core control logic for the robot, including:
+- State machine management
+- Emergency stop handling
+- Motion execution
+- Resource cleanup
 """
 
 import logging
@@ -22,21 +28,45 @@ class RobotController:
     """
     Coordinates motion, vision tracking, and decision logic to control the robot's behavior.
 
+    This class serves as the central coordinator for the robot's operations:
+    1. Manages the state machine for behavior control
+    2. Handles emergency stops and graceful shutdown
+    3. Coordinates between vision, motion, and decision components
+    4. Implements the main control loop
+
     Executes a cyclic process:
-    - Rotates to scan surroundings.
-    - Waits for ball detection.
-    - Approaches and retrieves ball when found.
-    - Resumes scanning after completing the retrieval cycle.
+    - Rotates to scan surroundings
+    - Waits for ball detection
+    - Approaches and retrieves ball when found
+    - Resumes scanning after completing the retrieval cycle
 
     Attributes:
-        motion: Motion controller module for moving/rotating the robot.
-        vision: Vision module for detecting balls via camera input.
-        decider: MovementDecider instance for deciding how to respond to detections.
-        config: RobotConfig instance for configuration values.
-        dev_mode (bool): Whether development slowdown is active.
+        motion: Motion controller module for moving/rotating the robot
+        vision: Vision module for detecting balls via camera input
+        decider: MovementDecider instance for deciding how to respond to detections
+        config: RobotConfig instance for configuration values
+        dev_mode: Whether development slowdown is active
+        dev_slowdown: Slowdown factor for development mode
+        is_running: Flag indicating if the robot is active
+        state_machine: RobotStateMachine instance for behavior control
+        _emergency_stop: Flag for emergency stop state
+        _cleanup_complete: Flag for cleanup completion
+        _cleanup_lock: asyncio.Lock for thread-safe cleanup
+        logger: Logger instance for logging operations
+        _initialized: Flag for initialization state
     """
 
     def __init__(self, motion, vision, decider, config=None, dev_mode=False):
+        """
+        Initialize the RobotController with its components.
+        
+        Args:
+            motion: Motion controller instance
+            vision: Vision tracker instance
+            decider: Movement decider instance
+            config: Optional RobotConfig instance
+            dev_mode: Whether to enable development mode
+        """
         self.motion = motion
         self.vision = vision
         self.decider = decider
@@ -55,13 +85,30 @@ class RobotController:
         signal.signal(signal.SIGINT, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
-        """Handle system signals for graceful shutdown."""
+        """
+        Handle system signals for graceful shutdown.
+        
+        Args:
+            signum: Signal number
+            frame: Current stack frame
+        """
         self.logger.info("Received shutdown signal")
         asyncio.create_task(self.emergency_stop())
 
     @with_error_handling("robot_controller")
     async def emergency_stop(self):
-        """Immediately stop all robot motion and cleanup resources."""
+        """
+        Immediately stop all robot motion and cleanup resources.
+        
+        This method:
+        1. Sets emergency stop flags
+        2. Stops all motion
+        3. Performs forced cleanup
+        4. Ensures resources are released
+        
+        Raises:
+            RobotError: If emergency stop fails
+        """
         if not self._cleanup_complete:
             self._emergency_stop = True
             self.is_running = False
@@ -82,7 +129,19 @@ class RobotController:
 
     @with_error_handling("robot_controller")
     async def run(self):
-        """Main control loop for the robot."""
+        """
+        Main control loop for the robot.
+        
+        This method implements the core control loop:
+        1. Verifies motor control and activates fins
+        2. Captures and processes camera frames
+        3. Updates the state machine
+        4. Decides and executes actions
+        5. Handles development mode slowdown
+        
+        Raises:
+            RobotError: If control loop fails
+        """
         if not self._initialized:
             raise RobotError("Robot controller not initialized", "robot_controller")
             
@@ -133,7 +192,21 @@ class RobotController:
 
     @with_error_handling("robot_controller")
     def execute_motion(self, action: str):
-        """Execute the specified motion action."""
+        """
+        Execute the specified motion action.
+        
+        This method:
+        1. Checks for emergency stop
+        2. Validates the action
+        3. Checks for obstacles
+        4. Executes the movement
+        
+        Args:
+            action: The motion action to execute
+            
+        Raises:
+            RobotError: If motion execution fails
+        """
         if self._emergency_stop:
             return
             
@@ -161,7 +234,21 @@ class RobotController:
 
     @with_error_handling("robot_controller")
     async def cleanup(self, force: bool = False):
-        """Clean up resources and stop all operations."""
+        """
+        Clean up resources and stop all operations.
+        
+        This method:
+        1. Stops all motion
+        2. Deactivates fins
+        3. Cleans up vision components
+        4. Resets state flags
+        
+        Args:
+            force: Whether to force cleanup and raise errors
+            
+        Raises:
+            RobotError: If cleanup fails and force is True
+        """
         if not self._cleanup_complete:
             try:
                 # Stop any ongoing motion
@@ -189,7 +276,18 @@ class RobotController:
                     raise RobotError(f"Cleanup failed: {str(e)}", "robot_controller")
 
     async def initialize(self):
-        """Initialize the robot controller components."""
+        """
+        Initialize the robot controller components.
+        
+        This method:
+        1. Initializes the vision tracker
+        2. Initializes the movement decider
+        3. Verifies motor control
+        4. Sets up camera in vision tracker
+        
+        Raises:
+            RobotError: If initialization fails
+        """
         try:
             # Initialize vision tracker first (loads YOLO model)
             await self.vision.initialize()

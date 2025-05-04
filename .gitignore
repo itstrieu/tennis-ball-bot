@@ -1,6 +1,9 @@
 # Ignore all files in the data folder
 data/
 private_drafts/
+BACKUP/
+mlruns/
+runs/
 
 # Ignore compiled model weights and checkpoints
 *.h5
@@ -39,14 +42,7 @@ cache/
 
 # Ignore virtual environment
 pi-yolo/
-private_drafts/
-mlruns/
-runs/
-download_model.py
-BACKUP/
 .env
-dist.py
-error_analysis_main.py
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
