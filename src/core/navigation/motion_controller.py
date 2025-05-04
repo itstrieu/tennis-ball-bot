@@ -393,3 +393,14 @@ class MotionController:
     def __del__(self):
         """Ensure cleanup on object destruction."""
         self.cleanup()
+
+    async def initialize(self):
+        """Initialize the motion controller components."""
+        try:
+            self._initialize_gpio()
+            # Initialize ultrasonic sensor for obstacle detection after GPIO is ready
+            self.ultrasonic = UltrasonicSensor(self.config, self._gpio_handle)
+            self.logger.info("Motion controller initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize motion controller: {str(e)}")
+            raise RobotError(f"Motion controller initialization failed: {str(e)}", "motion_controller")
