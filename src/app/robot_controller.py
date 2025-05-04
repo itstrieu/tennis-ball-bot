@@ -133,6 +133,12 @@ class RobotController:
                 self.logger.error(f"Unknown action: {action}")
                 return
                 
+            # Check for obstacles before any forward movement
+            if params['method'] == 'move_forward' and self.motion.ultrasonic.is_obstacle():
+                self.logger.warning("Obstacle detected, stopping movement")
+                self.motion.stop()
+                return
+                
             # Execute the movement
             method = getattr(self.motion, params['method'])
             method(speed=params['speed'], duration=params['time'])
