@@ -207,9 +207,16 @@ def main():
     # Create and run the demo robot
     demo = DemoRobot()
     
-    # Initialize and run the robot
-    asyncio.run(demo.initialize())
-    asyncio.run(demo.run())
+    # Create a single event loop for all operations
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Initialize and run the robot using the same event loop
+        loop.run_until_complete(demo.initialize())
+        loop.run_until_complete(demo.run())
+    finally:
+        loop.close()
 
 
 if __name__ == "__main__":
