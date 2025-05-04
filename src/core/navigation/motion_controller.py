@@ -222,13 +222,13 @@ class MotionController:
     def stop(self, speed: int = 0, duration: Optional[float] = None):
         """Stop all motors."""
         if self._is_moving:
-            pattern = {
-                "front_left": 0,
-                "front_right": 0,
-                "rear_left": 0,
-                "rear_right": 0
-            }
-            self._move_by_pattern(pattern, speed)
+            # Set all motors to stop by setting both control pins to 0
+            for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
+                pins = self.config.pins[motor_id]
+                lgpio.gpio_write(self._gpio_handle, pins["in1"], 0)
+                lgpio.gpio_write(self._gpio_handle, pins["in2"], 0)
+                lgpio.tx_pwm(self._gpio_handle, pins["pwm"], self.config.pwm_freq, 0)
+            
             self._is_moving = False
             self.logger.debug("Motors stopped")
             
