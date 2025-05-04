@@ -298,10 +298,16 @@ class StreamServer:
             # Start the server
             config = uvicorn.Config(
                 self.app,
-                host=host,
+                host="0.0.0.0",
                 port=port,
                 log_level="info",
-                access_log=False
+                access_log=False,
+                proxy_headers=True,
+                forwarded_allow_ips="*",
+                server_header=False,
+                date_header=False,
+                timeout_keep_alive=30,
+                timeout_graceful_shutdown=30
             )
             server = uvicorn.Server(config)
             await server.serve()
