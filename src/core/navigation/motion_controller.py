@@ -103,8 +103,14 @@ class MotionController:
             raise RobotError("GPIO not initialized", "motion_controller")
             
         # Claim and configure pins
-        for pin in self.config.pins.values():
-            lgpio.gpio_claim_output(self._gpio_handle, pin)
+        for motor_pins in self.config.pins.values():
+            if isinstance(motor_pins, dict):
+                # Handle nested pin dictionaries (motors)
+                for pin in motor_pins.values():
+                    lgpio.gpio_claim_output(self._gpio_handle, pin)
+            else:
+                # Handle single pin values (standby, etc.)
+                lgpio.gpio_claim_output(self._gpio_handle, motor_pins)
             
         self.logger.info("Output pins claimed successfully")
 
