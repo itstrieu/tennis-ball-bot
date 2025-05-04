@@ -61,8 +61,7 @@ class DemoRobot:
         try:
             # Initialize camera first
             self.camera = CameraManager(config=self.config)
-            self.camera.start()  # Synchronous camera start
-            await self.camera.initialize()  # Async frame update task start
+            await self.camera.initialize()  # Initialize camera and start frame update task
             
             # Give camera time to stabilize
             await asyncio.sleep(1)
@@ -94,7 +93,7 @@ class DemoRobot:
             
         except Exception as e:
             self.logger.error(f"Failed to initialize components: {str(e)}")
-            self.cleanup()
+            await self.cleanup()  # Make cleanup async
             raise RobotError(f"Initialization failed: {str(e)}", "demo_robot")
 
     @with_error_handling("demo_robot")
@@ -192,7 +191,9 @@ class DemoRobot:
             
         def handle_signal(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating shutdown")
-            self.cleanup()
+            # Run cleanup in the event loop
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.cleanup())
             sys.exit(0)
             
         # Store original signal handlers
@@ -204,7 +205,7 @@ class DemoRobot:
         signal.signal(signal.SIGTERM, handle_signal)
         
         # Register cleanup with atexit
-        atexit.register(self.cleanup)
+        atexit.register(lambda: asyncio.get_event_loop().run_until_complete(self.cleanup()))
 
 
 def main():
