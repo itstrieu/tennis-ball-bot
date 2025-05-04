@@ -37,6 +37,8 @@ class DemoRobot:
         controller: RobotController instance
         stream_server: StreamServer instance
         _main_loop: asyncio event loop for main operations
+        _cleanup_complete: bool indicating if cleanup is complete
+        _cleanup_lock: asyncio Lock for preventing multiple cleanups
     """
     
     def __init__(self, config=None):
@@ -49,20 +51,22 @@ class DemoRobot:
         self.controller = None
         self.stream_server = None
         self._main_loop = None
+        self._cleanup_complete = False
+        self._cleanup_lock = asyncio.Lock()
         self._setup_signal_handlers()
 
     def _setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
         def handle_signal(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating shutdown")
-            if self._main_loop:
+            if self._main_loop and not self._cleanup_complete:
                 self._main_loop.create_task(self.cleanup())
                 
         signal.signal(signal.SIGINT, handle_signal)
         signal.signal(signal.SIGTERM, handle_signal)
         
         # Register cleanup with atexit
-        atexit.register(lambda: asyncio.run(self.cleanup()))
+        atexit.register(lambda: asyncio.run(self.cleanup()) if not self._cleanup_complete else None)
 
     async def initialize(self):
         """Initialize all robot components."""
@@ -81,6 +85,7 @@ class DemoRobot:
             # Initialize vision tracker
             self.vision = VisionTracker(self.config)
             await self.vision.initialize()
+            await self.vision.set_camera(self.camera)  # Set the camera instance
             
             # Initialize movement decider
             self.decider = MovementDecider(self.config)
@@ -124,31 +129,42 @@ class DemoRobot:
 
     async def cleanup(self):
         """Clean up all robot components."""
-        try:
-            if self.stream_server:
-                await self.stream_server.stop()
-                self.logger.info("Streaming server stopped")
+        async with self._cleanup_lock:
+            if self._cleanup_complete:
+                return
                 
-            if self.controller:
-                await self.controller.cleanup()
+            try:
+                # Stop the robot controller first to prevent any new operations
+                if self.controller:
+                    await self.controller.cleanup()
+                    
+                # Stop the streaming server
+                if self.stream_server:
+                    await self.stream_server.stop()
+                    self.logger.info("Streaming server stopped")
+                    
+                # Clean up the movement decider
+                if self.decider:
+                    await self.decider.cleanup()
+                    
+                # Clean up the vision tracker (which uses the camera)
+                if self.vision:
+                    await self.vision.cleanup()
+                    
+                # Clean up the motion controller
+                if self.motion:
+                    await self.motion.cleanup()
+                    
+                # Clean up the camera last since other components depend on it
+                if self.camera:
+                    await self.camera.cleanup()
+                    
+                self._cleanup_complete = True
+                self.logger.info("Cleanup completed successfully")
                 
-            if self.decider:
-                await self.decider.cleanup()
-                
-            if self.vision:
-                await self.vision.cleanup()
-                
-            if self.motion:
-                await self.motion.cleanup()
-                
-            if self.camera:
-                await self.camera.cleanup()
-                
-            self.logger.info("Cleanup completed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {str(e)}")
-            raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
+            except Exception as e:
+                self.logger.error(f"Error during cleanup: {str(e)}")
+                raise RobotError(f"Cleanup failed: {str(e)}", "demo_robot")
 
 
 async def main():

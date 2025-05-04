@@ -9,6 +9,7 @@ import logging
 import time
 import signal
 import sys
+import asyncio
 from typing import Optional, Tuple
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -46,6 +47,7 @@ class RobotController:
         self.state_machine = RobotStateMachine(config=self.config)
         self._emergency_stop = False
         self._cleanup_complete = False
+        self._cleanup_lock = asyncio.Lock()
         self.logger = Logger.get_logger(name="robot", log_level=logging.INFO)
         self._initialized = False
         
@@ -55,7 +57,7 @@ class RobotController:
     def _signal_handler(self, signum, frame):
         """Handle system signals for graceful shutdown."""
         self.logger.info("Received shutdown signal")
-        self.emergency_stop()
+        asyncio.create_task(self.emergency_stop())
 
     @with_error_handling("robot_controller")
     async def emergency_stop(self):
@@ -153,28 +155,29 @@ class RobotController:
     @with_error_handling("robot_controller")
     async def cleanup(self, force: bool = False):
         """Cleanup resources and stop the robot."""
-        if not force and self._cleanup_complete:
-            return
-            
-        try:
-            # Stop any ongoing motion
-            self.motion.stop()
-            
-            # Deactivate fins
-            self.motion.fin_off()
-            
-            # Cleanup camera
-            if hasattr(self, 'vision') and self.vision is not None:
-                await self.vision.cleanup()
-            
-            self._cleanup_complete = True
-            self._initialized = False
-            self.logger.info("Cleanup completed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error during cleanup: {str(e)}")
-            if force:
-                raise RobotError(f"Cleanup failed: {str(e)}", "robot_controller")
+        async with self._cleanup_lock:
+            if not force and self._cleanup_complete:
+                return
+                
+            try:
+                # Stop any ongoing motion
+                self.motion.stop()
+                
+                # Deactivate fins
+                self.motion.fin_off()
+                
+                # Cleanup camera
+                if hasattr(self, 'vision') and self.vision is not None:
+                    await self.vision.cleanup()
+                
+                self._cleanup_complete = True
+                self._initialized = False
+                self.logger.info("Cleanup completed successfully")
+                
+            except Exception as e:
+                self.logger.error(f"Error during cleanup: {str(e)}")
+                if force:
+                    raise RobotError(f"Cleanup failed: {str(e)}", "robot_controller")
 
     async def initialize(self):
         """Initialize the robot controller components."""
