@@ -88,11 +88,11 @@ class DemoRobot:
             
             # Initialize robot controller
             self.controller = RobotController(
-                self.config,
-                self.camera,
-                self.motion,
-                self.vision,
-                self.decider
+                motion=self.motion,
+                vision=self.vision,
+                decider=self.decider,
+                config=self.config,
+                dev_mode=True
             )
             await self.controller.initialize()
             
