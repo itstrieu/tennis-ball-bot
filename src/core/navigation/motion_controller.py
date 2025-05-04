@@ -12,6 +12,7 @@ from typing import Dict, Optional, Literal
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
+from .ultrasonic import UltrasonicSensor
 
 
 class MotionController:
@@ -41,6 +42,9 @@ class MotionController:
         self._gpio_handle = None
         self._pins_claimed = False
         self.logger = Logger.get_logger(name="motion", log_level=logging.INFO)
+        
+        # Initialize ultrasonic sensor for obstacle detection
+        self.ultrasonic = UltrasonicSensor(config)
         
         try:
             self._initialize_gpio()
@@ -178,6 +182,13 @@ class MotionController:
     def move_forward(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Move forward at specified speed for optional duration."""
         self.logger.info(f"move_forward called with speed={speed}, duration={duration}")
+        
+        # Check for obstacles before moving
+        if self.ultrasonic.is_obstacle():
+            self.logger.warning("Obstacle detected, stopping movement")
+            self.stop()
+            return
+            
         pattern = {
             "front_left": -1,  # FL
             "front_right": 1,  # FR
@@ -315,6 +326,9 @@ class MotionController:
             except Exception as e:
                 self.logger.error(f"Error during cleanup: {str(e)}")
                 raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
+        
+        # Clean up ultrasonic sensor
+        self.ultrasonic.cleanup()
 
     @with_error_handling("motion_controller")
     def verify_motor_control(self):

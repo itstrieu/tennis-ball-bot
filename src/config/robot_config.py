@@ -40,6 +40,11 @@ class RobotConfig:
     search_rotate_speed: int = 60  # Higher search speed
     inter_step_pause: float = 0.5
     
+    # Ultrasonic Sensor Configuration
+    ground_distance: int = 50  # Expected distance to ground in cm
+    obstacle_threshold: int = 15  # If distance < this, likely an obstacle
+    error_threshold: int = 5  # Allowable error in ground distance
+    
     # Target areas and thresholds
     target_area: int = 12000
     center_threshold: int = 25
