@@ -18,15 +18,16 @@ class UltrasonicSensor:
     The sensor is mounted at an angle to distinguish between ground and obstacles.
     """
     
-    def __init__(self, config=None):
+    def __init__(self, config=None, gpio_handle=None):
         """
         Initialize the ultrasonic sensor.
         
         Args:
             config: Optional RobotConfig instance
+            gpio_handle: Optional GPIO handle from MotionController
         """
         self.config = config or default_config
-        self._gpio_handle = None
+        self._gpio_handle = gpio_handle
         self.logger = Logger.get_logger(name="ultrasonic", log_level=logging.INFO)
         
         try:
@@ -121,7 +122,11 @@ class UltrasonicSensor:
         """Clean up GPIO resources."""
         if self._gpio_handle is not None:
             try:
-                lgpio.gpiochip_close(self._gpio_handle)
+                # Only release ultrasonic pins, don't close the handle
+                trigger_pin = self.config.pins["ultrasonic"]["trigger"]
+                echo_pin = self.config.pins["ultrasonic"]["echo"]
+                lgpio.gpio_free(self._gpio_handle, trigger_pin)
+                lgpio.gpio_free(self._gpio_handle, echo_pin)
                 self._gpio_handle = None
                 self.logger.info("Ultrasonic sensor GPIO resources cleaned up")
             except Exception as e:

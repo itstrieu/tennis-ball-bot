@@ -43,11 +43,10 @@ class MotionController:
         self._pins_claimed = False
         self.logger = Logger.get_logger(name="motion", log_level=logging.INFO)
         
-        # Initialize ultrasonic sensor for obstacle detection
-        self.ultrasonic = UltrasonicSensor(config)
-        
         try:
             self._initialize_gpio()
+            # Initialize ultrasonic sensor for obstacle detection after GPIO is ready
+            self.ultrasonic = UltrasonicSensor(config, self._gpio_handle)
         except Exception as e:
             self.logger.error(f"Failed to initialize GPIO: {str(e)}")
             raise RobotError(f"GPIO initialization failed: {str(e)}", "motion_controller")
@@ -315,20 +314,26 @@ class MotionController:
     @with_error_handling("motion_controller")
     def cleanup(self):
         """Clean up GPIO resources."""
-        if self._gpio_handle is not None:
-            try:
-                self.stop()
-                self.fin_off()
+        try:
+            # First stop all motors and disable driver
+            self.stop()
+            self.fin_off()
+            self._disable_motor_driver()
+            
+            # Then cleanup ultrasonic sensor
+            if hasattr(self, 'ultrasonic'):
+                self.ultrasonic.cleanup()
+            
+            # Finally close GPIO handle
+            if self._gpio_handle is not None:
                 lgpio.gpiochip_close(self._gpio_handle)
                 self._gpio_handle = None
                 self._pins_claimed = False
                 self.logger.info("GPIO resources cleaned up")
-            except Exception as e:
-                self.logger.error(f"Error during cleanup: {str(e)}")
-                raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
-        
-        # Clean up ultrasonic sensor
-        self.ultrasonic.cleanup()
+                
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {str(e)}")
+            raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
 
     @with_error_handling("motion_controller")
     def verify_motor_control(self):
