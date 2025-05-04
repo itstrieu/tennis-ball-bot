@@ -13,35 +13,36 @@ This module provides:
 """
 
 from dataclasses import dataclass
-from typing import Dict, TypedDict, Literal
+from typing import Dict, TypedDict, Literal, Optional, Union
 
 # Type definitions
-MovementMethod = Literal["move_forward", "move_backward", "rotate_left", "rotate_right", "stop"]
-MovementParams = TypedDict('MovementParams', {
-    'method': MovementMethod,
-    'speed': int,
-    'time': float
-})
+MovementMethod = Literal[
+    "move_forward", "move_backward", "rotate_left", "rotate_right", "stop"
+]
+MovementParams = TypedDict(
+    "MovementParams", {"method": MovementMethod, "speed": int, "time": float}
+)
+
 
 @dataclass
 class RobotConfig:
     """
     Centralized configuration for the robot.
-    
+
     This class provides:
     - Vision system parameters
     - Motion control settings
     - Sensor configurations
     - GPIO pin mappings
     - Movement step definitions
-    
+
     The configuration is organized into sections:
     1. Vision: Camera and detection settings
     2. Motion: Motor and movement parameters
     3. Sensors: Ultrasonic sensor settings
     4. Streaming: Video streaming configuration
     5. GPIO: Pin mappings and control
-    
+
     Attributes:
         vision_model_path: Path to YOLO model file
         confidence_threshold: Minimum confidence for detections
@@ -70,73 +71,77 @@ class RobotConfig:
         target_fps: Target camera frame rate
         frame_buffer_size: Frame buffer size
         pins: GPIO pin mappings
+        motor_patterns: Motor direction patterns for wheels
     """
-    
+
     # === Vision Configuration ===
     vision_model_path: str = "models/current_best.pt"
     confidence_threshold: float = 0.9
     frame_width: int = 640
     camera_offset: int = 0
-    
+
     # === Motion Configuration ===
     # Fin Configuration
     fin_pwm_freq: int = 6000
     fin_speed: int = 85
-    
+
     # Wheels
     pwm_freq: int = 10000  # 10kHz frequency for motor control
-    
+
     # Basic speeds & thresholds
     speed: int = 85  # Higher base speed
     center_rotate_speed: int = 60  # Higher rotation speed
     search_rotate_speed: int = 60  # Higher search speed
     inter_step_pause: float = 0.5
-    
+
     # Ultrasonic Sensor Configuration
     ground_distance: int = 50  # Expected distance to ground in cm
     obstacle_threshold: int = 15  # If distance < this, likely an obstacle
     error_threshold: int = 5  # Allowable error in ground distance
-    
+
     # Target areas and thresholds
     target_area: int = 12000
     center_threshold: int = 25
     max_no_ball: int = 3
     max_recovery_attempts: int = 3
-    
+
     # Movement parameters
-    movement_steps: Dict[str, MovementParams] = None
-    
+    movement_steps: Optional[Dict[str, MovementParams]] = None
+
     # Ratios of TARGET_AREA to trigger decisions
-    thresholds: Dict[str, float] = None
-    
+    thresholds: Optional[Dict[str, float]] = None
+
     # Dev‐only slowdown factor (optional)
     dev_slowdown: float = 2
-    
+
     # === Streaming Configuration ===
     streaming_fps: int = 30
     streaming_quality: int = 85  # JPEG quality (0-100)
     max_bandwidth: int = 1000000  # 1 Mbps
     target_fps: int = 30  # Target frame rate for camera
     frame_buffer_size: int = 2  # Number of frames to buffer
-    
+
     # === GPIO Configuration ===
-    pins: Dict[str, Dict[str, int]] = None
-    
+    pins: Optional[Dict[str, Union[int, Dict[str, int]]]] = None
+    # Motor direction patterns for wheels
+    motor_patterns: Optional[Dict[str, Dict[str, int]]] = None
+
     def __post_init__(self):
         """
         Initialize default values for complex types.
-        
+
         This method:
         1. Sets up movement step definitions
         2. Configures area ratio thresholds
         3. Maps GPIO pins
-        
+        4. Initializes motor direction patterns
+
         The movement steps define:
         - Forward/backward movements
         - Left/right rotations
         - Search patterns
         - Stop commands
-        
+
         The thresholds define:
         - Stop condition
         - Micro adjustments
@@ -145,25 +150,92 @@ class RobotConfig:
         """
         if self.movement_steps is None:
             self.movement_steps = {
-                "step_forward": {"method": "move_forward", "speed": self.speed, "time": 1.5},
-                "small_forward": {"method": "move_forward", "speed": self.speed, "time": 1.0},
-                "micro_forward": {"method": "move_forward", "speed": self.speed, "time": 1.0},
-                "step_left": {"method": "rotate_left", "speed": self.center_rotate_speed, "time": 0.3},
-                "micro_left": {"method": "rotate_left", "speed": self.center_rotate_speed, "time": 0.1},
-                "step_right": {"method": "rotate_right", "speed": self.center_rotate_speed, "time": 0.3},
-                "micro_right": {"method": "rotate_right", "speed": self.center_rotate_speed, "time": 0.1},
+                "step_forward": {
+                    "method": "move_forward",
+                    "speed": self.speed,
+                    "time": 1.5,
+                },
+                "small_forward": {
+                    "method": "move_forward",
+                    "speed": self.speed,
+                    "time": 1.0,
+                },
+                "micro_forward": {
+                    "method": "move_forward",
+                    "speed": self.speed,
+                    "time": 1.0,
+                },
+                "step_left": {
+                    "method": "rotate_left",
+                    "speed": self.center_rotate_speed,
+                    "time": 0.3,
+                },
+                "micro_left": {
+                    "method": "rotate_left",
+                    "speed": self.center_rotate_speed,
+                    "time": 0.1,
+                },
+                "step_right": {
+                    "method": "rotate_right",
+                    "speed": self.center_rotate_speed,
+                    "time": 0.3,
+                },
+                "micro_right": {
+                    "method": "rotate_right",
+                    "speed": self.center_rotate_speed,
+                    "time": 0.1,
+                },
                 "stop": {"method": "stop", "speed": 0, "time": 1.0},
-                "search": {"method": "rotate_right", "speed": self.search_rotate_speed, "time": 0.8},
+                "search": {
+                    "method": "rotate_right",
+                    "speed": self.search_rotate_speed,
+                    "time": 0.8,
+                },
             }
-            
+
         if self.thresholds is None:
             self.thresholds = {
-                "stop": 1.0,    # Full target area
-                "micro": 0.7,   # 70% of target area
-                "small": 0.5,   # 50% of target area
-                "recovery": 0.2, # 20% of target area
+                "stop": 1.0,  # Full target area
+                "micro": 0.7,  # 70% of target area
+                "small": 0.5,  # 50% of target area
+                "recovery": 0.2,  # 20% of target area
             }
-            
+
+        # Initialize wheel movement patterns
+        if self.motor_patterns is None:
+            self.motor_patterns = {
+                "move_forward": {
+                    "front_left": -1,
+                    "front_right": 1,
+                    "rear_left": 1,
+                    "rear_right": -1,
+                },
+                "move_backward": {
+                    "front_left": 1,
+                    "front_right": -1,
+                    "rear_left": -1,
+                    "rear_right": 1,
+                },
+                "rotate_left": {
+                    "front_left": 1,
+                    "front_right": 1,
+                    "rear_left": 1,
+                    "rear_right": 1,
+                },
+                "rotate_right": {
+                    "front_left": -1,
+                    "front_right": -1,
+                    "rear_left": -1,
+                    "rear_right": -1,
+                },
+                "search": {
+                    "front_left": 1,
+                    "front_right": -1,
+                    "rear_left": 1,
+                    "rear_right": -1,
+                },
+            }
+
         if self.pins is None:
             self.pins = {
                 # Front left motor pins
@@ -180,15 +252,15 @@ class RobotConfig:
                 },
                 # Rear left motor pins
                 "rear_left": {
-                    "in1": 3,   # DRIVER_2_AIN1
-                    "in2": 4,   # DRIVER_2_AIN2
-                    "pwm": 6,   # DRIVER_2_PWMA
+                    "in1": 3,  # DRIVER_2_AIN1
+                    "in2": 4,  # DRIVER_2_AIN2
+                    "pwm": 6,  # DRIVER_2_PWMA
                 },
                 # Rear right motor pins
                 "rear_right": {
                     "in1": 22,  # DRIVER_2_BIN1
                     "in2": 27,  # DRIVER_2_BIN2
-                    "pwm": 5,   # DRIVER_2_PWMB
+                    "pwm": 5,  # DRIVER_2_PWMB
                 },
                 # Fin control pins
                 "fins": {
@@ -201,8 +273,9 @@ class RobotConfig:
                 "ultrasonic": {
                     "trigger": 2,
                     "echo": 15,
-                }
+                },
             }
 
+
 # Create default configuration
-default_config = RobotConfig() 
+default_config = RobotConfig()
