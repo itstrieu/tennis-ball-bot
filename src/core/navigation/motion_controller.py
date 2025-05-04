@@ -145,6 +145,8 @@ class MotionController:
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
             
+        self.logger.info(f"_set_motor called with in1={in1}, in2={in2}, pwm={pwm}, direction={direction}, duty={duty}")
+            
         # Set direction
         if direction == 0:
             # Stop motor by setting both control pins to 0
@@ -205,6 +207,7 @@ class MotionController:
     @with_error_handling("motion_controller")
     def move_forward(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Move forward at specified speed for optional duration."""
+        self.logger.info(f"move_forward called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": -1,  # FL
             "front_right": 1,  # FR
@@ -219,6 +222,7 @@ class MotionController:
     @with_error_handling("motion_controller")
     def move_backward(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Move backward at specified speed for optional duration."""
+        self.logger.info(f"move_backward called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": 1,   # FL
             "front_right": -1, # FR
@@ -233,6 +237,7 @@ class MotionController:
     @with_error_handling("motion_controller")
     def rotate_left(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Rotate left at specified speed for optional duration."""
+        self.logger.info(f"rotate_left called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": 1,   # FL
             "front_right": 1,  # FR
@@ -247,6 +252,7 @@ class MotionController:
     @with_error_handling("motion_controller")
     def rotate_right(self, speed: Optional[int] = None, duration: Optional[float] = None):
         """Rotate right at specified speed for optional duration."""
+        self.logger.info(f"rotate_right called with speed={speed}, duration={duration}")
         pattern = {
             "front_left": -1,  # FL
             "front_right": -1, # FR
@@ -261,6 +267,7 @@ class MotionController:
     @with_error_handling("motion_controller")
     def stop(self, speed: int = 0, duration: Optional[float] = None):
         """Stop all motors."""
+        self.logger.info("stop called")
         if self._is_moving:
             # First stop all motors
             for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
@@ -360,6 +367,33 @@ class MotionController:
                 self.logger.info(f"Motor {motor_id}: in1={pins['in1']}({in1_state}), in2={pins['in2']}({in2_state})")
                 
         self.logger.info("Motor control verification complete")
+
+    @with_error_handling("motion_controller")
+    def test_motors(self):
+        """
+        Test each motor: forward, backward, stop, and log pin states.
+        """
+        self.logger.info("Starting motor test sequence...")
+
+        for motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
+            pins = self.config.pins[motor_id]
+            
+            self.logger.info(f"Testing {motor_id} FORWARD")
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 1, 80)
+            time.sleep(1)
+            self.verify_motor_control()
+
+            self.logger.info(f"Testing {motor_id} BACKWARD")
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], -1, 80)
+            time.sleep(1)
+            self.verify_motor_control()
+
+            self.logger.info(f"Testing {motor_id} STOP")
+            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 0, 0)
+            time.sleep(1)
+            self.verify_motor_control()
+
+        self.logger.info("Motor test sequence complete.")
 
     def __del__(self):
         """Ensure cleanup on object destruction."""
