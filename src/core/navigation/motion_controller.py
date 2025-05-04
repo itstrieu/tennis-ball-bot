@@ -162,7 +162,7 @@ class MotionController:
             self.logger.debug(f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}")
         
         # Set PWM with higher frequency (20kHz)
-        result = lgpio.tx_pwm(self._gpio_handle, pwm, 20000, duty)
+        result = lgpio.tx_pwm(self._gpio_handle, pwm, 10000, duty)
         if result < 0:
             self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
         else:
