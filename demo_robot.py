@@ -137,13 +137,13 @@ class DemoRobot:
                 self.decider = None
 
             # Clean up the vision tracker (sync)
-            if self.vision is not None:
+            if self.vision:
                 self.vision.cleanup()
                 self.vision = None
 
             # Clean up the motion controller (sync)
-            if self.motion is not None:
-                self.motion.cleanup()
+            if self.motion:
+                await self.motion.cleanup()
                 self.motion = None
 
             # Clean up the camera

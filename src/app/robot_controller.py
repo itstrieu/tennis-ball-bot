@@ -12,7 +12,6 @@ This module implements the core control logic for the robot, including:
 """
 
 import logging
-import time
 import asyncio
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -143,11 +142,13 @@ class RobotController:
                 self.logger.debug("Deciding action...")
                 action = self.decider.decide(ball_data)
                 self.logger.info(f"Executing action: {action}")
-                self.execute_motion(action)
+                await self.execute_motion(action)
 
                 # Development mode slowdown
                 if self.dev_mode:
-                    time.sleep(self.config.inter_step_pause * self.dev_slowdown)
+                    await asyncio.sleep(
+                        self.config.inter_step_pause * self.dev_slowdown
+                    )
 
         except asyncio.CancelledError:
             self.logger.info("Control loop cancelled.")
@@ -163,7 +164,7 @@ class RobotController:
             self.is_running = False
 
     @with_error_handling("robot_controller")
-    def execute_motion(self, action: str):
+    async def execute_motion(self, action: str):
         """
         Execute the specified motion action.
         """
@@ -188,7 +189,7 @@ class RobotController:
 
             # Execute the movement
             method = getattr(self.motion, params["method"])
-            method(speed=params["speed"], duration=params["time"])
+            await method(speed=params["speed"], duration=params["time"])
 
         except Exception as e:
             self.logger.error(f"Error executing motion {action}: {str(e)}")
@@ -209,7 +210,8 @@ class RobotController:
         if not self._cleanup_complete:
             try:
                 # Stop any ongoing motion
-                self.motion.stop()
+                if self.motion:
+                    await self.motion.stop()
 
                 # Set flags to stop loops/tasks
                 self.is_running = False
@@ -245,13 +247,18 @@ class RobotController:
             # Initialize movement decider
             await self.decider.initialize()
 
-            # Verify motor control and activate fins
-            self.motion.verify_motor_control()
-            self.motion.fin_on()
+            # Await async motion methods
+            if self.motion:
+                await self.motion.verify_motor_control()
+                await self.motion.fin_on()
 
             # Set up camera in vision tracker
-            if hasattr(self, "camera") and self.camera is not None:
-                await self.vision.set_camera(self.camera)
+            if hasattr(self.vision, "camera") and self.vision.camera is not None:
+                await self.vision.set_camera(self.vision.camera)
+            else:
+                self.logger.warning(
+                    "Vision tracker does not have a camera instance set."
+                )
 
             self._initialized = True
             self.logger.info("Robot controller initialized successfully")
