@@ -11,10 +11,11 @@ This module provides low-level control of the robot's motors:
 - Obstacle detection integration
 """
 
-import time
 import logging
 import lgpio
+import asyncio
 from typing import Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
@@ -63,6 +64,8 @@ class MotionController:
         self._gpio_handle = None
         self._pins_claimed = False
         self.logger = Logger.get_logger(name="motion", log_level=logging.INFO)
+        self._executor = ThreadPoolExecutor(max_workers=2)
+        self._loop = None  # Will be set later
 
         try:
             self._initialize_gpio()
@@ -145,9 +148,11 @@ class MotionController:
         self.logger.info("Output pins claimed successfully")
 
     @with_error_handling("motion_controller")
-    def _set_motor(self, in1: int, in2: int, pwm: int, direction: int, speed: int):
+    async def _set_motor(
+        self, in1: int, in2: int, pwm: int, direction: int, speed: int
+    ):
         """
-        Set motor state and PWM speed.
+        Set motor state and PWM speed (runs blocking parts in executor).
 
         This method:
         1. Sets motor direction
@@ -164,46 +169,38 @@ class MotionController:
         Raises:
             RobotError: If GPIO is not initialized
         """
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
 
         self.logger.info(
-            f"_set_motor called with in1={in1}, in2={in2}, pwm={pwm}, direction={direction}, speed={speed}"
+            f"_set_motor async call: in1={in1}, in2={in2}, pwm={pwm}, dir={direction}, speed={speed}"
         )
 
-        # Set direction
-        if direction == 0:
-            # Stop motor by setting both control pins to 0
-            result1 = lgpio.gpio_write(self._gpio_handle, in1, 0)
-            result2 = lgpio.gpio_write(self._gpio_handle, in2, 0)
-            self.logger.debug(
-                f"Stopping motor: in1={in1}({result1}), in2={in2}({result2})"
-            )
-        else:
-            # Set direction for forward/backward
-            in1_val = 1 if direction > 0 else 0
-            in2_val = 0 if direction > 0 else 1
-            result1 = lgpio.gpio_write(self._gpio_handle, in1, in1_val)
-            result2 = lgpio.gpio_write(self._gpio_handle, in2, in2_val)
-            self.logger.debug(
-                f"Setting motor direction: in1={in1}({result1})={in1_val}, in2={in2}({result2})={in2_val}"
-            )
+        # Define the blocking part as a separate function
+        def set_motor_sync():
+            # Define the blocking part as a separate function
+            if direction == 0:
+                lgpio.gpio_write(self._gpio_handle, in1, 0)
+                lgpio.gpio_write(self._gpio_handle, in2, 0)
+            else:
+                in1_val = 1 if direction > 0 else 0
+                in2_val = 0 if direction > 0 else 1
+                lgpio.gpio_write(self._gpio_handle, in1, in1_val)
+                lgpio.gpio_write(self._gpio_handle, in2, in2_val)
+            lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, speed)
 
-        # Set PWM with frequency from config
-        result = lgpio.tx_pwm(self._gpio_handle, pwm, self.config.pwm_freq, speed)
-        if result < 0:
-            self.logger.error(f"Failed to set PWM on pin {pwm}: {result}")
-        else:
-            self.logger.debug(
-                f"Set PWM on pin {pwm} to {speed}% at {self.config.pwm_freq}Hz"
-            )
-            # Small delay to ensure PWM takes effect
-            time.sleep(0.1)
+        # Run the synchronous part in the executor
+        await self._loop.run_in_executor(self._executor, set_motor_sync)
+        await asyncio.sleep(0.1)
 
     @with_error_handling("motion_controller")
-    def _move_by_pattern(self, pattern: Dict[str, int], speed: Optional[int] = None):
+    async def _move_by_pattern(
+        self, pattern: Dict[str, int], speed: Optional[int] = None
+    ):
         """
-        Move motors according to a pattern.
+        Move motors according to a pattern (now async).
 
         This method:
         1. Enables motor driver
@@ -217,37 +214,87 @@ class MotionController:
         Raises:
             RobotError: If motor driver enable fails
         """
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         if not self._pins_claimed:
-            self._initialize_gpio()
+            raise RobotError(
+                "GPIO not initialized before async move", "motion_controller"
+            )
 
         speed = speed or self.speed
         self._is_moving = True
 
         try:
-            # Enable motor driver
-            standby_pin = self.config.pins["standby"]
-            result = lgpio.gpio_write(self._gpio_handle, standby_pin, 1)
-            if result < 0:
-                self.logger.error(
-                    f"Failed to enable motor driver (standby pin): {result}"
-                )
+            # Enable motor driver (sync part)
+            def enable_driver_sync():
+                # Check if config and pins are loaded
+                if not self.config or not self.config.pins:
+                    self.logger.error("Config or pins not loaded in enable_driver_sync")
+                    return False
+                standby_pin = self.config.pins.get("standby")
+                if standby_pin is None:
+                    self.logger.error("Standby pin not found in config")
+                    return False
+                result = lgpio.gpio_write(self._gpio_handle, standby_pin, 1)
+                if result < 0:
+                    # Cannot raise from executor easily, log error
+                    self.logger.error(
+                        f"Executor: Failed to enable motor driver: {result}"
+                    )
+                    return False
+                return True
+
+            success = await self._loop.run_in_executor(
+                self._executor, enable_driver_sync
+            )
+            if not success:
                 raise RobotError("Failed to enable motor driver", "motion_controller")
             self.logger.debug("Motor driver enabled (standby pin set to 1)")
 
+            # Set motors asynchronously
+            tasks = []
             for motor_id, direction in pattern.items():
-                pins = self.config.pins[motor_id]
-                # Reduce speed for rear wheels
+                if (
+                    not self.config
+                    or not self.config.pins
+                    or motor_id not in self.config.pins
+                ):
+                    self.logger.warning(
+                        f"Skipping invalid motor_id '{motor_id}' in _move_by_pattern"
+                    )
+                    continue
+
+                pins_config = self.config.pins[motor_id]
+                if not isinstance(pins_config, dict) or not all(
+                    k in pins_config for k in ("in1", "in2", "pwm")
+                ):
+                    self.logger.warning(f"Skipping invalid pin config for '{motor_id}'")
+                    continue
+
                 if "rear" in motor_id:
-                    rear_speed = int(
-                        speed * 0.7
-                    )  # Reduce rear wheel speed to 70% of front wheels
-                    self._set_motor(
-                        pins["in1"], pins["in2"], pins["pwm"], direction, rear_speed
+                    rear_speed = int(speed * 0.7)
+                    tasks.append(
+                        self._set_motor(
+                            pins_config["in1"],
+                            pins_config["in2"],
+                            pins_config["pwm"],
+                            direction,
+                            rear_speed,
+                        )
                     )
                 else:
-                    self._set_motor(
-                        pins["in1"], pins["in2"], pins["pwm"], direction, speed
+                    tasks.append(
+                        self._set_motor(
+                            pins_config["in1"],
+                            pins_config["in2"],
+                            pins_config["pwm"],
+                            direction,
+                            speed,
+                        )
                     )
+
+            await asyncio.gather(*tasks)  # Run motor settings concurrently
 
             self.logger.debug(
                 f"Moving with pattern: {pattern}, front speed: {speed}%, rear speed: {int(speed * 0.7)}%"
@@ -255,15 +302,15 @@ class MotionController:
         except Exception as e:
             self._is_moving = False
             # Ensure motor driver is disabled on error
-            self._disable_motor_driver()
+            await self._disable_motor_driver()
             raise
 
     @with_error_handling("motion_controller")
-    def move_forward(
+    async def move_forward(
         self, speed: Optional[int] = None, duration: Optional[float] = None
     ):
         """
-        Move forward at specified speed for optional duration.
+        Move forward (now async).
 
         This method:
         1. Checks for obstacles
@@ -276,29 +323,41 @@ class MotionController:
         """
         self.logger.info(f"move_forward called with speed={speed}, duration={duration}")
 
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         # Check for obstacles before moving
-        if self.ultrasonic.is_obstacle():
+        # Run obstacle check in executor if it involves blocking I/O
+        is_obstacle = (
+            await self._loop.run_in_executor(
+                self._executor, self.ultrasonic.is_obstacle
+            )
+            if self.ultrasonic
+            else False
+        )
+        if is_obstacle:
             self.logger.warning("Obstacle detected, stopping movement")
-            self.stop()
+            await self.stop()
             return
 
-        pattern = {
-            "front_left": -1,  # FL
-            "front_right": 1,  # FR
-            "rear_left": 1,  # RL
-            "rear_right": -1,  # RR
-        }
-        self._move_by_pattern(pattern, speed)
+        if not self.config or not self.config.motor_patterns:
+            self.logger.error("Config or motor_patterns not loaded")
+            return
+        pattern = self.config.motor_patterns.get("move_forward")
+        if pattern is None:
+            self.logger.error("move_forward pattern not found in config")
+            return
+        await self._move_by_pattern(pattern, speed)
         if duration:
-            time.sleep(duration)
-            self.stop()
+            await asyncio.sleep(duration)
+            await self.stop()
 
     @with_error_handling("motion_controller")
-    def move_backward(
+    async def move_backward(
         self, speed: Optional[int] = None, duration: Optional[float] = None
     ):
         """
-        Move backward at specified speed for optional duration.
+        Move backward (now async).
 
         Args:
             speed: Optional speed override
@@ -307,67 +366,73 @@ class MotionController:
         self.logger.info(
             f"move_backward called with speed={speed}, duration={duration}"
         )
-        pattern = {
-            "front_left": 1,  # FL
-            "front_right": -1,  # FR
-            "rear_left": -1,  # RL
-            "rear_right": 1,  # RR
-        }
-        self._move_by_pattern(pattern, speed)
+        pattern = (
+            self.config.motor_patterns.get("move_backward")
+            if self.config and self.config.motor_patterns
+            else None
+        )
+        if not pattern:
+            self.logger.error("move_backward pattern not found or config missing")
+            return
+        await self._move_by_pattern(pattern, speed)
         if duration:
-            time.sleep(duration)
-            self.stop()
+            await asyncio.sleep(duration)
+            await self.stop()
 
     @with_error_handling("motion_controller")
-    def rotate_left(
+    async def rotate_left(
         self, speed: Optional[int] = None, duration: Optional[float] = None
     ):
         """
-        Rotate left at specified speed for optional duration.
+        Rotate left (now async).
 
         Args:
             speed: Optional speed override
             duration: Optional movement duration in seconds
         """
         self.logger.info(f"rotate_left called with speed={speed}, duration={duration}")
-        pattern = {
-            "front_left": 1,  # FL
-            "front_right": 1,  # FR
-            "rear_left": 1,  # RL
-            "rear_right": 1,  # RR
-        }
-        self._move_by_pattern(pattern, speed)
+        pattern = (
+            self.config.motor_patterns.get("rotate_left")
+            if self.config and self.config.motor_patterns
+            else None
+        )
+        if not pattern:
+            self.logger.error("rotate_left pattern not found or config missing")
+            return
+        await self._move_by_pattern(pattern, speed)
         if duration:
-            time.sleep(duration)
-            self.stop()
+            await asyncio.sleep(duration)
+            await self.stop()
 
     @with_error_handling("motion_controller")
-    def rotate_right(
+    async def rotate_right(
         self, speed: Optional[int] = None, duration: Optional[float] = None
     ):
         """
-        Rotate right at specified speed for optional duration.
+        Rotate right (now async).
 
         Args:
             speed: Optional speed override
             duration: Optional movement duration in seconds
         """
         self.logger.info(f"rotate_right called with speed={speed}, duration={duration}")
-        pattern = {
-            "front_left": -1,  # FL
-            "front_right": -1,  # FR
-            "rear_left": -1,  # RL
-            "rear_right": -1,  # RR
-        }
-        self._move_by_pattern(pattern, speed)
+        pattern = (
+            self.config.motor_patterns.get("rotate_right")
+            if self.config and self.config.motor_patterns
+            else None
+        )
+        if not pattern:
+            self.logger.error("rotate_right pattern not found or config missing")
+            return
+        await self._move_by_pattern(pattern, speed)
         if duration:
-            time.sleep(duration)
-            self.stop()
+            await asyncio.sleep(duration)
+            await self.stop()
 
     @with_error_handling("motion_controller")
-    def stop(self, speed: int = 0, duration: Optional[float] = None):
+    async def stop(self, speed: int = 0, duration: Optional[float] = None):
         """
-        Stop all motors.
+        Stop all motors (now async).
 
         This method:
         1. Stops all motors
@@ -380,103 +445,177 @@ class MotionController:
         """
         self.logger.info("stop called")
         if duration:
-            time.sleep(duration)
+            await asyncio.sleep(duration)
 
         self._is_moving = False
         # Only stop actual wheel motors
-        for motor_id, pins in self.config.pins.items():
-            if isinstance(pins, dict) and all(k in pins for k in ("in1", "in2", "pwm")):
-                self._set_motor(
-                    pins["in1"],
-                    pins["in2"],
-                    pins["pwm"],
-                    0,
-                    speed,
-                )
+        tasks = []
+        if self.config and self.config.pins:
+            for motor_id, pins_config in self.config.pins.items():
+                if isinstance(pins_config, dict) and all(
+                    k in pins_config for k in ("in1", "in2", "pwm")
+                ):
+                    tasks.append(
+                        self._set_motor(
+                            pins_config["in1"],
+                            pins_config["in2"],
+                            pins_config["pwm"],
+                            0,
+                            speed,
+                        )
+                    )
+
+        await asyncio.gather(*tasks)
 
         self.logger.info("All motors stopped")
 
     @with_error_handling("motion_controller")
-    def search(self, speed: Optional[int] = None, duration: Optional[float] = None):
-        """Rotate right to search for balls."""
+    async def search(
+        self, speed: Optional[int] = None, duration: Optional[float] = None
+    ):
+        """Rotate right to search for balls (now async)."""
         self.logger.info(f"search called with speed={speed}, duration={duration}")
-        pattern = {
-            "front_left": 1,  # FL
-            "front_right": -1,  # FR
-            "rear_left": 1,  # RL
-            "rear_right": -1,  # RR
-        }
-        self._move_by_pattern(pattern, speed)
+        pattern = (
+            self.config.motor_patterns.get("search")
+            if self.config and self.config.motor_patterns
+            else None
+        )
+        if not pattern:
+            self.logger.error("search pattern not found or config missing")
+            return
+        await self._move_by_pattern(pattern, speed)
         if duration:
-            time.sleep(duration)
-            self.stop()
+            await asyncio.sleep(duration)
+            await self.stop()
 
     @with_error_handling("motion_controller")
-    def _disable_motor_driver(self):
-        """Disable motor driver by setting standby pin to 0."""
+    async def _disable_motor_driver(self):
+        """Disable motor driver by setting standby pin to 0 (now async)."""
         if self._gpio_handle is None:
             return
 
-        standby_pin = self.config.pins["standby"]
-        result = lgpio.gpio_write(self._gpio_handle, standby_pin, 0)
-        if result < 0:
-            self.logger.error(f"Failed to disable motor driver (standby pin): {result}")
-        else:
-            self.logger.debug("Motor driver disabled (standby pin set to 0)")
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
+        if not self.config or not self.config.pins:
+            self.logger.error("Config or pins not loaded in _disable_motor_driver")
+            return
+        standby_pin = self.config.pins.get("standby")
+        if standby_pin is None:
+            self.logger.error("Standby pin not found in config")
+            return
+
+        # Run blocking GPIO write in executor
+        def disable_driver_sync():
+            result = lgpio.gpio_write(self._gpio_handle, standby_pin, 0)
+            if result < 0:
+                self.logger.error(f"Executor: Failed to disable motor driver: {result}")
+
+        await self._loop.run_in_executor(self._executor, disable_driver_sync)
+        self.logger.debug("Motor driver disabled (standby pin set to 0)")
 
     @with_error_handling("motion_controller")
-    def fin_on(self, speed: Optional[int] = None):
-        """Activate fins at specified speed."""
+    async def fin_on(self, speed: Optional[int] = None):
+        """Activate fins at specified speed (now async)."""
         if not self._pins_claimed:
-            self._initialize_gpio()
+            raise RobotError(
+                "GPIO not initialized before async fin_on", "motion_controller"
+            )
+
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
 
         speed = speed or self.config.fin_speed
-        pins = self.config.pins["fins"]
+        if not self.config or not self.config.pins:
+            self.logger.error("Config or pins not loaded in fin_on")
+            return
+        pins_config = self.config.pins.get("fins")
+        if not isinstance(pins_config, dict):
+            self.logger.error("Invalid fins config")
+            return
 
         try:
-            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 1)
-            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, 0)
-            lgpio.tx_pwm(
-                self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, speed
-            )
+
+            def fin_on_sync():
+                lgpio.gpio_write(self._gpio_handle, pins_config["L_EN"], 1)
+                lgpio.tx_pwm(
+                    self._gpio_handle, pins_config["PWM_L"], self.config.fin_pwm_freq, 0
+                )
+                lgpio.tx_pwm(
+                    self._gpio_handle,
+                    pins_config["PWM_R"],
+                    self.config.fin_pwm_freq,
+                    speed,
+                )
+
+            await self._loop.run_in_executor(self._executor, fin_on_sync)
             self.logger.debug(f"Fins activated at speed {speed}")
         except Exception as e:
             self.logger.error(f"Failed to activate fins: {str(e)}")
             raise RobotError(f"Fin activation failed: {str(e)}", "motion_controller")
 
     @with_error_handling("motion_controller")
-    def fin_off(self):
-        """Deactivate fins."""
+    async def fin_off(self):
+        """Deactivate fins (now async)."""
         if not self._pins_claimed:
             return
 
-        pins = self.config.pins["fins"]
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
+        if not self.config or not self.config.pins:
+            self.logger.error("Config or pins not loaded in fin_off")
+            return
+        pins_config = self.config.pins.get("fins")
+        if not isinstance(pins_config, dict):
+            self.logger.error("Invalid fins config")
+            return
 
         try:
-            lgpio.tx_pwm(self._gpio_handle, pins["PWM_L"], self.config.fin_pwm_freq, 0)
-            lgpio.tx_pwm(self._gpio_handle, pins["PWM_R"], self.config.fin_pwm_freq, 0)
-            lgpio.gpio_write(self._gpio_handle, pins["L_EN"], 0)
+
+            def fin_off_sync():
+                lgpio.tx_pwm(
+                    self._gpio_handle, pins_config["PWM_L"], self.config.fin_pwm_freq, 0
+                )
+                lgpio.tx_pwm(
+                    self._gpio_handle, pins_config["PWM_R"], self.config.fin_pwm_freq, 0
+                )
+                lgpio.gpio_write(self._gpio_handle, pins_config["L_EN"], 0)
+
+            await self._loop.run_in_executor(self._executor, fin_off_sync)
             self.logger.debug("Fins deactivated")
         except Exception as e:
             self.logger.error(f"Failed to deactivate fins: {str(e)}")
             raise RobotError(f"Fin deactivation failed: {str(e)}", "motion_controller")
 
     @with_error_handling("motion_controller")
-    def cleanup(self):
+    async def cleanup(self):  # Now async to ensure proper executor shutdown
         """Clean up GPIO resources."""
         try:
             # First stop all motors and disable driver
-            self.stop()
-            self.fin_off()
-            self._disable_motor_driver()
+            await self.stop()
+            await self.fin_off()
+            await self._disable_motor_driver()
 
-            # Then cleanup ultrasonic sensor
-            if hasattr(self, "ultrasonic"):
-                self.ultrasonic.cleanup()
+            # Then cleanup ultrasonic sensor (assuming its cleanup is sync)
+            if hasattr(self, "ultrasonic") and self.ultrasonic:
+                if self._loop is None:
+                    self._loop = asyncio.get_running_loop()
+                await self._loop.run_in_executor(
+                    self._executor, self.ultrasonic.cleanup
+                )
 
-            # Finally close GPIO handle
+            # Shutdown the executor
+            self._executor.shutdown(wait=True)
+
+            # Finally close GPIO handle (sync)
             if self._gpio_handle is not None:
-                lgpio.gpiochip_close(self._gpio_handle)
+
+                def close_gpio_sync():
+                    lgpio.gpiochip_close(self._gpio_handle)
+
+                # Run final blocking close in executor (or maybe just call sync? depends on lgpio)
+                close_gpio_sync()  # Assuming gpiochip_close is okay to call sync
                 self._gpio_handle = None
                 self._pins_claimed = False
                 self.logger.info("GPIO resources cleaned up")
@@ -486,71 +625,124 @@ class MotionController:
             raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
 
     @with_error_handling("motion_controller")
-    def verify_motor_control(self):
+    async def verify_motor_control(self):  # Now async
         """Verify motor control pins and their states."""
         if self._gpio_handle is None:
             raise RobotError("GPIO not initialized", "motion_controller")
 
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         self.logger.info("Verifying motor control pins...")
 
         # Check standby pin
-        standby_pin = self.config.pins["standby"]
-        standby_state = lgpio.gpio_read(self._gpio_handle, standby_pin)
-        self.logger.info(f"Standby pin ({standby_pin}) state: {standby_state}")
+        def read_standby_sync():
+            # Add checks for config and pins
+            if not self.config or not self.config.pins:
+                return None  # Indicate error
+            standby_pin = self.config.pins.get("standby")
+            if standby_pin is None:
+                return None
+            return lgpio.gpio_read(self._gpio_handle, standby_pin)
+
+        standby_pin_val = (
+            self.config.pins.get("standby")
+            if self.config and self.config.pins
+            else None
+        )
+        standby_state = await self._loop.run_in_executor(
+            self._executor, read_standby_sync
+        )
+        if standby_state is not None and standby_pin_val is not None:
+            self.logger.info(f"Standby pin ({standby_pin_val}) state: {standby_state}")
+        else:
+            self.logger.error("Could not verify standby pin state.")
 
         # Check each motor's control pins
-        for motor_id, pins in self.config.pins.items():
-            if motor_id in ["front_left", "front_right", "rear_left", "rear_right"]:
-                in1_state = lgpio.gpio_read(self._gpio_handle, pins["in1"])
-                in2_state = lgpio.gpio_read(self._gpio_handle, pins["in2"])
-                self.logger.info(
-                    f"Motor {motor_id}: in1={pins['in1']}({in1_state}), in2={pins['in2']}({in2_state})"
-                )
+        if self.config and self.config.pins:
+            for motor_id, pins_config in self.config.pins.items():
+                if isinstance(pins_config, dict) and all(
+                    k in pins_config for k in ("in1", "in2")
+                ):
+
+                    def read_motor_pins_sync(p):
+                        s1 = lgpio.gpio_read(self._gpio_handle, p["in1"])
+                        s2 = lgpio.gpio_read(self._gpio_handle, p["in2"])
+                        return s1, s2
+
+                    in1_state, in2_state = await self._loop.run_in_executor(
+                        self._executor, read_motor_pins_sync, pins_config
+                    )
+                    self.logger.info(
+                        f"Motor {motor_id}: in1={pins_config['in1']}({in1_state}), in2={pins_config['in2']}({in2_state})"
+                    )
 
         self.logger.info("Motor control verification complete")
 
     @with_error_handling("motion_controller")
-    def test_motors(self):
+    async def test_motors(self):  # Now async
         """Test each motor by moving it forward, backward, and stopping."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
         self.logger.info("Starting motor test sequence...")
 
         # Test each motor
-        for motor_name, pins in self.config.pins.items():
-            if motor_name in ["fins", "standby", "ultrasonic"]:
+        if not self.config or not self.config.pins:
+            self.logger.error("Cannot test motors: Config or pins not loaded")
+            return
+
+        for motor_name, pins_config in self.config.pins.items():
+            if not isinstance(pins_config, dict) or not all(
+                k in pins_config for k in ("in1", "in2", "pwm")
+            ):
                 continue
 
             self.logger.info(f"Testing {motor_name} FORWARD")
-            # For front_left and rear_right, use -1 for forward
-            # For front_right and rear_left, use 1 for forward
             direction = -1 if motor_name in ["front_left", "rear_right"] else 1
-            self._set_motor(
-                pins["in1"], pins["in2"], pins["pwm"], direction, self.config.speed
+            await self._set_motor(
+                pins_config["in1"],
+                pins_config["in2"],
+                pins_config["pwm"],
+                direction,
+                self.config.speed,
             )
-            time.sleep(1)
-            self.verify_motor_control()
+            await asyncio.sleep(1)
+            await self.verify_motor_control()
 
             self.logger.info(f"Testing {motor_name} BACKWARD")
-            # For front_left and rear_right, use 1 for backward
-            # For front_right and rear_left, use -1 for backward
             direction = 1 if motor_name in ["front_left", "rear_right"] else -1
-            self._set_motor(
-                pins["in1"], pins["in2"], pins["pwm"], direction, self.config.speed
+            await self._set_motor(
+                pins_config["in1"],
+                pins_config["in2"],
+                pins_config["pwm"],
+                direction,
+                self.config.speed,
             )
-            time.sleep(1)
-            self.verify_motor_control()
+            await asyncio.sleep(1)
+            await self.verify_motor_control()
 
             self.logger.info(f"Testing {motor_name} STOP")
-            self._set_motor(pins["in1"], pins["in2"], pins["pwm"], 0, 0)
-            time.sleep(1)
-            self.verify_motor_control()
+            await self._set_motor(
+                pins_config["in1"], pins_config["in2"], pins_config["pwm"], 0, 0
+            )
+            await asyncio.sleep(1)
+            await self.verify_motor_control()
 
         self.logger.info("Motor test sequence complete.")
 
     def __del__(self):
         """Ensure cleanup on object destruction."""
-        self.cleanup()
+        if hasattr(self, "_executor") and self._executor:
+            self._executor.shutdown(wait=False)  # Try to shutdown executor
+        if self._gpio_handle:
+            try:
+                lgpio.gpiochip_close(self._gpio_handle)
+            except Exception:
+                pass  # Ignore errors in __del__
+            self._gpio_handle = None
 
-    async def initialize(self):
+    async def initialize(self):  # Async initialize remains
         """Initialize the motion controller components."""
         try:
             self._initialize_gpio()

@@ -10,14 +10,11 @@ This module provides a web interface for:
 - Control over the streaming process
 """
 
-import io
 import asyncio
 import logging
 import threading
-from threading import Condition
-from contextlib import asynccontextmanager
-from typing import Optional, Set
-import time
+from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -33,13 +30,13 @@ class StreamServer:
     """
     Manages the streaming server and its components.
     Uses the camera's streaming architecture for efficient frame delivery.
-    
+
     This class provides:
     - WebSocket-based video streaming
     - Debug information endpoints
     - Stream control endpoints
     - HTML interface for monitoring
-    
+
     Attributes:
         config: RobotConfig instance for configuration values
         camera: CameraManager instance for frame capture
@@ -50,12 +47,14 @@ class StreamServer:
         _stream_consumers: set of active WebSocket connections
         _server_thread: Thread running the FastAPI server
         _should_stop: Flag for graceful shutdown
+        _server_stopped_event: asyncio.Event for server stop completion
+        _executor: ThreadPoolExecutor for thread join
     """
-    
+
     def __init__(self, config=None):
         """
         Initialize the StreamServer with optional configuration.
-        
+
         Args:
             config: Optional RobotConfig instance. If None, uses default_config.
         """
@@ -68,12 +67,14 @@ class StreamServer:
         self._stream_consumers = set()
         self._server_thread = None
         self._should_stop = False
+        self._server_stopped_event = asyncio.Event()
+        self._executor = ThreadPoolExecutor(max_workers=1)  # Executor for join
         self._setup_routes()
 
     def set_components(self, camera, vision=None):
         """
         Set the required components for streaming.
-        
+
         Args:
             camera: CameraManager instance for frame capture
             vision: Optional VisionTracker instance for debug info
@@ -84,16 +85,16 @@ class StreamServer:
     async def _get_frame(self):
         """
         Get the latest frame from the camera.
-        
+
         Returns:
             Optional[np.ndarray]: The latest camera frame or None if capture fails
-            
+
         Raises:
             RobotError: If camera is not available or frame capture fails
         """
         if not self.camera:
             raise RobotError("Camera not available", "stream_server")
-            
+
         try:
             # Capture frame directly from camera
             frame = self.camera.camera.capture_array()
@@ -107,18 +108,19 @@ class StreamServer:
     def _setup_routes(self):
         """
         Set up FastAPI routes and endpoints.
-        
+
         This method configures:
         - HTML interface for streaming
         - WebSocket endpoint for video frames
         - Debug information endpoint
         - Stream control endpoints
         """
+
         @self.app.get("/", response_class=HTMLResponse)
         async def index():
             """
             Serve the HTML interface for streaming.
-            
+
             Returns:
                 HTMLResponse: The streaming interface HTML page
             """
@@ -263,18 +265,18 @@ class StreamServer:
         def debug():
             """
             Return debug information about the robot's state.
-            
+
             Returns:
                 dict: Debug information including detections, frame count, and FPS
             """
             if not self.vision:
                 return {"error": "Vision tracker not available"}
-                
+
             try:
                 return {
                     "detections": self.vision.get_detections(),
                     "frame_count": self.vision.frame_count,
-                    "fps": self.vision.get_fps()
+                    "fps": self.vision.get_fps(),
                 }
             except Exception as e:
                 self.logger.error(f"Error getting debug info: {str(e)}")
@@ -285,16 +287,16 @@ class StreamServer:
         async def start_stream():
             """
             Start the video stream.
-            
+
             Returns:
                 dict: Status of the streaming operation
-                
+
             Raises:
                 RobotError: If camera is not available or stream start fails
             """
             if not self.camera:
                 raise RobotError("Camera not available", "stream_server")
-                
+
             try:
                 await self.camera.start_streaming()
                 return {"status": "streaming"}
@@ -307,10 +309,10 @@ class StreamServer:
         async def stop_stream():
             """
             Stop the video stream.
-            
+
             Returns:
                 dict: Status of the streaming operation
-                
+
             Raises:
                 RobotError: If stream stop fails
             """
@@ -326,33 +328,36 @@ class StreamServer:
         async def websocket_endpoint(websocket: WebSocket):
             """
             Handle WebSocket connections for video streaming.
-            
+
             This endpoint:
             1. Accepts WebSocket connections
             2. Sends video frames to connected clients
             3. Handles client disconnection
             4. Manages stream consumer registration
-            
+
             Args:
                 websocket: WebSocket connection instance
             """
             await websocket.accept()
             self._stream_consumers.add(websocket)
-            
+
             try:
                 while True:
                     # Get latest frame
                     frame = await self._get_frame()
                     if frame is None:
                         continue
-                        
+
                     # Convert frame to JPEG
-                    _, buffer = cv2.imencode('.jpg', frame, 
-                        [cv2.IMWRITE_JPEG_QUALITY, self.config.streaming_quality])
-                    
+                    _, buffer = cv2.imencode(
+                        ".jpg",
+                        frame,
+                        [cv2.IMWRITE_JPEG_QUALITY, self.config.streaming_quality],
+                    )
+
                     # Send frame to client
                     await websocket.send_bytes(buffer.tobytes())
-                    
+
             except WebSocketDisconnect:
                 self._stream_consumers.remove(websocket)
             except Exception as e:
@@ -363,35 +368,33 @@ class StreamServer:
     async def start(self):
         """
         Start the streaming server.
-        
+
         This method:
         1. Creates a new thread for the FastAPI server
         2. Configures the server with appropriate settings
         3. Starts the server in the background
-        
+
         Raises:
             RobotError: If server start fails
         """
         if self._server_thread and self._server_thread.is_alive():
             return
-            
+
         try:
             # Configure server settings
             config = uvicorn.Config(
-                self.app,
-                host="0.0.0.0",
-                port=8000,
-                log_level="info"
+                self.app, host="0.0.0.0", port=8000, log_level="info"
             )
-            
+
             # Create and start server in new thread
             server = uvicorn.Server(config)
-            self._server_thread = threading.Thread(
-                target=server.run,
-                daemon=True
-            )
+            self.server = server  # Store the server instance
+            self._server_thread = threading.Thread(target=server.run, daemon=True)
             self._server_thread.start()
-            
+
+            # Wait briefly for the server to start up
+            await asyncio.sleep(1.0)
+
             self.logger.info("Streaming server started")
         except Exception as e:
             self.logger.error(f"Failed to start server: {str(e)}")
@@ -400,39 +403,67 @@ class StreamServer:
     def _run_server(self):
         """
         Run the FastAPI server.
-        
+
         This method is called in a separate thread and:
         1. Runs the uvicorn server
         2. Handles server lifecycle
         3. Manages graceful shutdown
         """
         try:
-            uvicorn.run(
-                self.app,
-                host="0.0.0.0",
-                port=8000,
-                log_level="info"
-            )
+            uvicorn.run(self.app, host="0.0.0.0", port=8000, log_level="info")
         except Exception as e:
             self.logger.error(f"Server error: {str(e)}")
 
     async def stop(self):
         """
         Stop the streaming server.
-        
+
         This method:
         1. Signals the server to stop
         2. Waits for the server thread to finish
         3. Cleans up resources
-        
+
         Raises:
             RobotError: If server stop fails
         """
-        try:
+        if not self._server_thread or not self._server_thread.is_alive():
+            self.logger.info("Server thread not running or already stopped.")
+            self._server_stopped_event.set()  # Ensure event is set if already stopped
+            return
+
+        self.logger.info("Attempting to stop streaming server gracefully...")
+
+        # Signal uvicorn to exit (it handles signals internally)
+        if hasattr(self, "server") and hasattr(self.server, "handle_exit"):
+            self.server.handle_exit(sig=None, frame=None)
+        else:
+            self.logger.warning("Could not access uvicorn server handle_exit.")
+            # As a fallback, setting _should_stop might be checked by ws loop if implemented
             self._should_stop = True
-            if self._server_thread:
-                self._server_thread.join(timeout=5)
-            self.logger.info("Streaming server stopped")
+
+        # Wait for the thread to join without blocking the event loop
+        loop = asyncio.get_running_loop()
+        join_task = loop.run_in_executor(self._executor, self._server_thread.join, 5.0)
+
+        try:
+            await asyncio.wait_for(
+                join_task, timeout=6.0
+            )  # Wait slightly longer than join timeout
+            if self._server_thread.is_alive():
+                self.logger.warning("Server thread did not stop within timeout.")
+            else:
+                self.logger.info("Server thread stopped successfully.")
+        except asyncio.TimeoutError:
+            self.logger.warning("Timeout waiting for server thread to join.")
         except Exception as e:
-            self.logger.error(f"Failed to stop server: {str(e)}")
-            raise RobotError(f"Server stop failed: {str(e)}", "stream_server")
+            self.logger.error(f"Error waiting for server thread: {e}")
+            # Don't raise here, allow cleanup to continue
+        finally:
+            self._server_thread = None
+            self._executor.shutdown(wait=False)  # Shutdown executor used for join
+            self._server_stopped_event.set()  # Signal completion
+            self.logger.info("Streaming server stop sequence complete.")
+
+    async def wait_for_stop(self, timeout: Optional[float] = None):
+        """Wait until the server stop process is complete."""
+        await self._server_stopped_event.wait()
