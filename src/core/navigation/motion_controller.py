@@ -597,10 +597,11 @@ class MotionController:
             await self.fin_off()
             await self._disable_motor_driver()
 
-            # Then cleanup ultrasonic sensor (assuming its cleanup is sync)
+            # Then cleanup ultrasonic sensor
             if hasattr(self, "ultrasonic") and self.ultrasonic:
                 if self._loop is None:
                     self._loop = asyncio.get_running_loop()
+                # Run ultrasonic cleanup (which is sync) in executor
                 await self._loop.run_in_executor(
                     self._executor, self.ultrasonic.cleanup
                 )
@@ -608,21 +609,13 @@ class MotionController:
             # Shutdown the executor
             self._executor.shutdown(wait=True)
 
-            # Finally close GPIO handle (sync)
-            if self._gpio_handle is not None:
-
-                def close_gpio_sync():
-                    lgpio.gpiochip_close(self._gpio_handle)
-
-                # Run final blocking close in executor (or maybe just call sync? depends on lgpio)
-                close_gpio_sync()  # Assuming gpiochip_close is okay to call sync
-                self._gpio_handle = None
-                self._pins_claimed = False
-                self.logger.info("GPIO resources cleaned up")
+            self.logger.info(
+                "MotionController cleanup finished (GPIO handle left open)."
+            )
 
         except Exception as e:
             self.logger.error(f"Error during cleanup: {str(e)}")
-            raise RobotError(f"Cleanup failed: {str(e)}", "motion_controller")
+            # Optionally re-raise or handle specific cleanup errors
 
     @with_error_handling("motion_controller")
     async def verify_motor_control(self):  # Now async
@@ -733,14 +726,8 @@ class MotionController:
 
     def __del__(self):
         """Ensure cleanup on object destruction."""
-        if hasattr(self, "_executor") and self._executor:
-            self._executor.shutdown(wait=False)  # Try to shutdown executor
-        if self._gpio_handle:
-            try:
-                lgpio.gpiochip_close(self._gpio_handle)
-            except Exception:
-                pass  # Ignore errors in __del__
-            self._gpio_handle = None
+        # Avoid async call in __del__; rely on explicit cleanup
+        pass
 
     async def initialize(self):  # Async initialize remains
         """Initialize the motion controller components."""

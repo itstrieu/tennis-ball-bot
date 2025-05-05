@@ -94,11 +94,12 @@ class RobotController:
 
             # Immediately stop physical motion
             if self.motion:
-                self.motion.stop()
-                self.motion.fin_off()
+                # Await async stop/fin_off methods
+                await self.motion.stop()
+                await self.motion.fin_off()
 
             # Initiate the full cleanup process
-            await self.cleanup(force=True, from_cancel=from_cancel)
+            # Cleanup is now handled by DemoRobot after emergency stop finishes
 
             self.logger.info("Emergency stop process completed")
 
@@ -121,8 +122,9 @@ class RobotController:
         try:
             # Verify motor control and fins are active before starting main loop
             self.logger.info("Verifying motor control and activating fins...")
-            self.motion.verify_motor_control()
-            self.motion.fin_on()
+            if self.motion:
+                await self.motion.verify_motor_control()
+                await self.motion.fin_on()
 
             self.logger.info("Starting main control loop...")
             while self.is_running and not self._emergency_stop:
