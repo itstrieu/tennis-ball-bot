@@ -383,7 +383,7 @@ class StreamServer:
         try:
             # Configure server settings
             config = uvicorn.Config(
-                self.app, host="0.0.0.0", port=8000, log_level="info"
+                self.app, host="127.0.0.1", port=8000, log_level="info"
             )
 
             # Create and start server in new thread
@@ -395,7 +395,7 @@ class StreamServer:
             # Wait briefly for the server to start up
             await asyncio.sleep(1.0)
 
-            self.logger.info("Streaming server started")
+            self.logger.info("Streaming server started on 127.0.0.1:8000")
         except Exception as e:
             self.logger.error(f"Failed to start server: {str(e)}")
             raise RobotError(f"Server start failed: {str(e)}", "stream_server")
@@ -410,7 +410,7 @@ class StreamServer:
         3. Manages graceful shutdown
         """
         try:
-            uvicorn.run(self.app, host="0.0.0.0", port=8000, log_level="info")
+            uvicorn.run(self.app, host="127.0.0.1", port=8000, log_level="info")
         except Exception as e:
             self.logger.error(f"Server error: {str(e)}")
 
