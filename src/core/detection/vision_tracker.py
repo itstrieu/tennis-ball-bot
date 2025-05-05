@@ -172,8 +172,12 @@ class VisionTracker:
             frame: Input frame to process
 
         Returns:
-            List[Tuple[float, float, float, float]]: List of bounding boxes (x, y, w, h) for detected tennis balls,
-                                                    or None if no balls detected
+            List[Tuple[Tuple[float, float, float, float], float, str]]:
+                List of tuples, where each tuple contains:
+                 - bbox (x, y, w, h)
+                 - confidence score (float)
+                 - label (str)
+                Returns None if no valid tennis balls are detected.
 
         Raises:
             RobotError: If detection fails
@@ -186,7 +190,7 @@ class VisionTracker:
 
             # Extract only tennis balls and filter based on confidence threshold
             tennis_balls = [
-                (bbox, conf, label)
+                (bbox, conf, label)  # Keep bbox, conf, and label
                 for (bbox, conf, label) in predictions
                 if label.lower() == "tennis_ball" and conf >= self.conf_threshold
             ]
@@ -198,8 +202,8 @@ class VisionTracker:
             if not tennis_balls:
                 return None
 
-            # Return the list of bounding boxes for tennis balls
-            return [bbox for (bbox, conf, label) in tennis_balls]
+            # Return the list of (bbox, confidence, label) tuples for tennis balls
+            return tennis_balls  # Modified return value
         except Exception as e:
             self.logger.error(f"Error during ball detection: {str(e)}")
             raise RobotError(f"Ball detection failed: {str(e)}", "vision_tracker")
