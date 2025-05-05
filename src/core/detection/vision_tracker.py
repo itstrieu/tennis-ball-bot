@@ -25,20 +25,20 @@ from src.app.camera_manager import CameraManager
 class VisionTracker:
     """
     Tracks tennis balls using YOLO model and camera input.
-    
+
     This class provides:
     - Real-time ball detection using YOLO
     - Frame capture and processing
     - Ball position and size analysis
     - Error handling and logging
-    
+
     The tracker implements the following workflow:
     1. Initializes YOLO model and camera
     2. Captures frames from camera
     3. Processes frames through YOLO model
     4. Filters detections for tennis balls
     5. Analyzes ball position and size
-    
+
     Attributes:
         model: YOLOInference instance for object detection
         frame_width: Width of the camera frame
@@ -48,16 +48,16 @@ class VisionTracker:
         logger: Logger instance
         _initialized: Whether the tracker is initialized
     """
-    
+
     def __init__(self, config=None):
         """
         Initialize vision tracker with configuration.
-        
+
         This method:
         1. Sets up configuration
         2. Initializes logging
         3. Sets default values
-        
+
         Args:
             config: Optional RobotConfig instance
         """
@@ -73,43 +73,47 @@ class VisionTracker:
     async def initialize(self):
         """
         Initialize the vision tracker components.
-        
+
         This method:
         1. Loads YOLO model
         2. Sets initialization flag
         3. Handles errors
-        
+
         Raises:
             RobotError: If initialization fails
         """
         try:
             # Load YOLO model
-            self.model = YOLOInference(self.config.vision_model_path, config=self.config)
+            self.model = YOLOInference(
+                self.config.vision_model_path, config=self.config
+            )
             self.logger.info("YOLO model loaded successfully")
             self._initialized = True
         except Exception as e:
             self.logger.error(f"Failed to initialize vision tracker: {str(e)}")
-            raise RobotError(f"Vision tracker initialization failed: {str(e)}", "vision_tracker")
+            raise RobotError(
+                f"Vision tracker initialization failed: {str(e)}", "vision_tracker"
+            )
 
     @with_error_handling("vision_tracker")
     async def set_camera(self, camera):
         """
         Set the shared camera instance.
-        
+
         This method:
         1. Validates YOLO model
         2. Tests camera access
         3. Sets initialization flag
-        
+
         Args:
             camera: CameraManager instance
-            
+
         Raises:
             RobotError: If camera setup fails
         """
         if self.model is None:
             raise RobotError("YOLO model not loaded", "vision_tracker")
-            
+
         self.camera = camera
         try:
             # Test camera access
@@ -120,27 +124,29 @@ class VisionTracker:
             self.logger.info("Vision tracker initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize vision tracker: {str(e)}")
-            raise RobotError(f"Vision tracker initialization failed: {str(e)}", "vision_tracker")
+            raise RobotError(
+                f"Vision tracker initialization failed: {str(e)}", "vision_tracker"
+            )
 
     @with_error_handling("vision_tracker")
     async def get_frame(self):
         """
         Capture a frame from the shared camera.
-        
+
         This method:
         1. Validates initialization
         2. Captures frame
         3. Handles errors
-        
+
         Returns:
             np.ndarray: The captured frame
-            
+
         Raises:
             RobotError: If camera access fails
         """
         if not self._initialized:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
-            
+
         try:
             frame = await self.camera.get_frame()
             if frame is None:
@@ -154,27 +160,27 @@ class VisionTracker:
     async def detect_ball(self, frame):
         """
         Run YOLO model, filter for 'tennis_ball', return all detected tennis balls' bounding boxes.
-        
+
         This method:
         1. Validates initialization
         2. Runs YOLO prediction
         3. Filters tennis ball detections
         4. Applies confidence threshold
         5. Returns bounding boxes
-        
+
         Args:
             frame: Input frame to process
-            
+
         Returns:
             List[Tuple[float, float, float, float]]: List of bounding boxes (x, y, w, h) for detected tennis balls,
                                                     or None if no balls detected
-            
+
         Raises:
             RobotError: If detection fails
         """
         if not self._initialized:
             raise RobotError("Vision tracker not initialized", "vision_tracker")
-            
+
         try:
             predictions = self.model.predict(frame)
 
@@ -202,14 +208,14 @@ class VisionTracker:
     def calculate_area(self, bbox):
         """
         Calculates the area of the bounding box.
-        
+
         This method:
         1. Extracts width and height
         2. Calculates area
-        
+
         Args:
             bbox: Bounding box tuple (x, y, w, h)
-            
+
         Returns:
             float: Area of the bounding box
         """
@@ -221,15 +227,15 @@ class VisionTracker:
         """
         Returns how far the object is from the robot's centerline (in pixels).
         Positive → object is to the right of center, negative → left.
-        
+
         This method:
         1. Calculates bounding box center
         2. Adjusts for camera offset
         3. Computes offset from frame center
-        
+
         Args:
             bbox: Bounding box tuple (x, y, w, h)
-            
+
         Returns:
             float: Offset from center in pixels
         """
@@ -237,28 +243,30 @@ class VisionTracker:
         bbox_center_x = x + (w / 2)
         adjusted_center = bbox_center_x - self.camera_offset
         return adjusted_center - (self.frame_width / 2)
-        
+
     @with_error_handling("vision_tracker")
-    def cleanup(self):
+    def cleanup(self):  # Synchronous cleanup
         """
         Clean up resources used by the vision tracker.
-        
+
         This method:
         1. Validates initialization
         2. Cleans up model resources
         3. Resets initialization flag
-        
+
         Raises:
             RobotError: If cleanup fails
         """
         if not self._initialized:
             return
-            
+
         try:
-            if hasattr(self.model, 'cleanup'):
+            if hasattr(self.model, "cleanup"):
                 self.model.cleanup()
             self._initialized = False
             self.logger.info("Vision tracker cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during vision tracker cleanup: {str(e)}")
-            raise RobotError(f"Vision tracker cleanup failed: {str(e)}", "vision_tracker")
+            raise RobotError(
+                f"Vision tracker cleanup failed: {str(e)}", "vision_tracker"
+            )

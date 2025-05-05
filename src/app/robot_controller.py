@@ -14,12 +14,10 @@ This module implements the core control logic for the robot, including:
 import logging
 import time
 import asyncio
-from typing import Optional, Tuple
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
-from src.app.camera_manager import CameraManager
-from src.core.strategy.robot_state import RobotStateMachine, RobotState
+from src.core.strategy.robot_state import RobotStateMachine
 
 
 class RobotController:
@@ -82,51 +80,33 @@ class RobotController:
         # Signal handling removed; rely on main() cleanup
 
     @with_error_handling("robot_controller")
-    async def emergency_stop(self):
+    async def emergency_stop(self, from_cancel: bool = False):
         """
-        Immediately stop all robot motion and cleanup resources.
-
-        This method:
-        1. Sets emergency stop flags
-        2. Stops all motion
-        3. Performs forced cleanup
-        4. Ensures resources are released
-
-        Raises:
-            RobotError: If emergency stop fails
+        Immediately stop all robot motion and initiate cleanup.
+        Args:
+            from_cancel: If called due to task cancellation.
         """
         if not self._cleanup_complete:
+            self.logger.warning(
+                f"Emergency stop activated {'(from cancellation)' if from_cancel else ''}"
+            )
             self._emergency_stop = True
             self.is_running = False
-            self.logger.warning("Emergency stop activated")
 
-            try:
-                # Stop any ongoing motion
+            # Immediately stop physical motion
+            if self.motion:
                 self.motion.stop()
+                self.motion.fin_off()
 
-                # Cleanup resources
-                await self.cleanup(force=True)
+            # Initiate the full cleanup process
+            await self.cleanup(force=True, from_cancel=from_cancel)
 
-                self._cleanup_complete = True
-                self.logger.info("Emergency stop completed")
-            except Exception as e:
-                self.logger.error(f"Error during emergency stop: {str(e)}")
-                raise RobotError(f"Emergency stop failed: {str(e)}", "robot_controller")
+            self.logger.info("Emergency stop process completed")
 
     @with_error_handling("robot_controller")
     async def run(self):
         """
         Main control loop for the robot.
-
-        This method implements the core control loop:
-        1. Verifies motor control and activates fins
-        2. Captures and processes camera frames
-        3. Updates the state machine
-        4. Decides and executes actions
-        5. Handles development mode slowdown
-
-        Raises:
-            RobotError: If control loop fails
         """
         if not self._initialized:
             raise RobotError("Robot controller not initialized", "robot_controller")
@@ -169,30 +149,23 @@ class RobotController:
                 if self.dev_mode:
                     time.sleep(self.config.inter_step_pause * self.dev_slowdown)
 
+        except asyncio.CancelledError:
+            self.logger.info("Control loop cancelled.")
+            # Ensure resources are released immediately on cancellation
+            await self.emergency_stop(from_cancel=True)
+            raise  # Re-raise CancelledError
         except Exception as e:
             self.logger.error(f"Error in main control loop: {str(e)}")
-            # Perform emergency stop
-            await self.emergency_stop()
+            await self.emergency_stop()  # Attempt graceful stop on other errors
             raise RobotError(f"Control loop failed: {str(e)}", "robot_controller")
         finally:
-            await self.cleanup()
+            # General cleanup moved to DemoRobot, only stop loop flag here
+            self.is_running = False
 
     @with_error_handling("robot_controller")
     def execute_motion(self, action: str):
         """
         Execute the specified motion action.
-
-        This method:
-        1. Checks for emergency stop
-        2. Validates the action
-        3. Checks for obstacles
-        4. Executes the movement
-
-        Args:
-            action: The motion action to execute
-
-        Raises:
-            RobotError: If motion execution fails
         """
         if self._emergency_stop:
             return
@@ -219,39 +192,34 @@ class RobotController:
 
         except Exception as e:
             self.logger.error(f"Error executing motion {action}: {str(e)}")
-            # Schedule emergency stop
-            asyncio.create_task(self.emergency_stop())
+            # Stop immediately on motion error
+            self.motion.stop()
+            self.is_running = False  # Signal loop to stop
             raise RobotError(f"Motion execution failed: {str(e)}", "robot_controller")
 
     @with_error_handling("robot_controller")
-    async def cleanup(self, force: bool = False):
+    async def cleanup(self, force: bool = False, from_cancel: bool = False):
         """
         Clean up resources and stop all operations.
 
-        This method:
-        1. Stops all motion
-        2. Deactivates fins
-        3. Cleans up vision components
-        4. Resets state flags
-
         Args:
-            force: Whether to force cleanup and raise errors
-
-        Raises:
-            RobotError: If cleanup fails and force is True
+            force: Whether to force cleanup (e.g., during emergency stop)
+            from_cancel: Indicates if cleanup is due to task cancellation
         """
         if not self._cleanup_complete:
             try:
                 # Stop any ongoing motion
                 self.motion.stop()
 
-                # Deactivate fins
-                self.motion.fin_off()
+                # Set flags to stop loops/tasks
+                self.is_running = False
+                self._emergency_stop = True  # Ensure loops terminate
 
                 # Cleanup camera and vision if available
                 if self.vision is not None:
                     try:
-                        await self.vision.cleanup()
+                        # Vision cleanup is synchronous
+                        self.vision.cleanup()
                     except Exception as e:
                         self.logger.error(f"Error cleaning up vision: {str(e)}")
                         if force:
@@ -269,15 +237,6 @@ class RobotController:
     async def initialize(self):
         """
         Initialize the robot controller components.
-
-        This method:
-        1. Initializes the vision tracker
-        2. Initializes the movement decider
-        3. Verifies motor control
-        4. Sets up camera in vision tracker
-
-        Raises:
-            RobotError: If initialization fails
         """
         try:
             # Initialize vision tracker first (loads YOLO model)

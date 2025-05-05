@@ -6,10 +6,7 @@ Initializes and runs the robot components.
 """
 
 import asyncio
-import signal
-import atexit
 import logging
-from typing import Optional
 
 from src.app.camera_manager import CameraManager
 from src.core.navigation.motion_controller import MotionController
@@ -52,24 +49,6 @@ class DemoRobot:
         self.stream_server = None
         self._cleanup_complete = False
         self._main_loop = None
-        self._setup_signal_handlers()
-
-    def _setup_signal_handlers(self):
-        """Set up signal handlers for graceful shutdown."""
-
-        def handle_signal(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating shutdown")
-            if self._main_loop and not self._cleanup_complete:
-                # Use the existing event loop to run cleanup
-                asyncio.run_coroutine_threadsafe(self.cleanup(), self._main_loop)
-
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
-
-        # Register cleanup with atexit
-        atexit.register(
-            lambda: asyncio.run(self.cleanup()) if not self._cleanup_complete else None
-        )
 
     async def initialize(self):
         """Initialize all robot components."""
@@ -181,19 +160,29 @@ class DemoRobot:
 
 async def main():
     """Main entry point for the robot demo."""
-    # Instantiate robot and ensure cleanup on shutdown
     robot = DemoRobot()
+    main_task = None
     try:
+        main_task = asyncio.create_task(robot.run(), name="RobotRun")
+        # Initialization must happen before running the main task
         await robot.initialize()
-        await robot.run()
+        # Now wait for the main task to complete (or be cancelled)
+        await main_task
     except (KeyboardInterrupt, asyncio.CancelledError):
         robot.logger.info("Shutdown signal received, cleaning up...")
+        if main_task and not main_task.done():
+            main_task.cancel()
+            try:
+                await main_task  # Allow cancellation to propagate
+            except asyncio.CancelledError:
+                robot.logger.info("Main task cancelled.")
     except Exception as e:
         Logger.get_logger(name="main", log_level=logging.ERROR).error(
             f"Error in main: {str(e)}"
         )
         raise
     finally:
+        robot.logger.info("Executing final cleanup...")
         await robot.cleanup()
 
 
