@@ -345,27 +345,39 @@ class StreamServer:
         async def get_status():
             """Return the current status/action of the robot."""
             status_text = "Unknown (Controller / StateMachine unavailable)"
-            last_action = "N/A"
+            current_state_name = "N/A"
+            last_action_str = "N/A"
 
             if self.state_machine and isinstance(self.state_machine, RobotStateMachine):
                 try:
-                    current_state = self.state_machine.current_state.name
-                    if self.controller and hasattr(
-                        self.controller, "last_executed_action"
-                    ):
-                        last_action = self.controller.last_executed_action or "N/A"
+                    current_state_name = self.state_machine.current_state.name
+                    # Safely get last_executed_action from controller
+                    if self.controller:
+                        last_action_str = getattr(
+                            self.controller, "last_executed_action", "N/A"
+                        )
+                        if (
+                            last_action_str is None
+                        ):  # Ensure it's not None if attribute exists but is None
+                            last_action_str = "N/A"
 
-                    status_text = f"State: {current_state}\nLast Action: {last_action}"
+                    status_text = (
+                        f"State: {current_state_name}\nLast Action: {last_action_str}"
+                    )
                 except AttributeError as e:
                     self.logger.warning(f"Attribute error getting state/action: {e}")
-                    status_text = f"State: Error accessing state ({e})"
+                    status_text = (
+                        f"State: {current_state_name}\nLast Action: Error ({e})"
+                    )
                 except Exception as e:
                     self.logger.error(
                         f"Error retrieving status from state machine: {e}"
                     )
-                    status_text = "Error retrieving status"
+                    status_text = "Error retrieving status from state machine"
             elif self.controller and isinstance(self.controller, RobotController):
-                status_text = f"Controller Status: {'Running' if self.controller.is_running else 'Stopped'}"
+                # Fallback if only controller is available
+                controller_is_running = getattr(self.controller, "is_running", False)
+                status_text = f"Controller Status: {'Running' if controller_is_running else 'Stopped'}"
 
             return {"status": status_text}
 
