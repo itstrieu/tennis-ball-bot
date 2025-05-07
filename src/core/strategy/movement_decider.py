@@ -13,7 +13,7 @@ This module provides:
 
 import logging
 import time
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
 from config.robot_config import default_config
@@ -61,9 +61,7 @@ class MovementDecider:
         self.logger = Logger.get_logger(name="decider", log_level=logging.INFO)
         self.no_ball_count = 0  # Tracks how many consecutive frames had no ball
         self.last_area = 0  # Area of last seen ball
-        self.last_seen_valid = (
-            False  # True only if the ball was seen in the previous frame
-        )
+        self.last_seen_valid = False  # True only if the last ball detection was valid
         self.max_no_ball_count = self.config.max_no_ball  # Use max_no_ball from config
         self._initialized = False
 
@@ -110,9 +108,7 @@ class MovementDecider:
             )
 
     @with_error_handling("movement_decider")
-    def decide(
-        self, ball_data: Optional[List[Tuple[float, float, float, float]]]
-    ) -> str:
+    def decide(self, ball_data: Optional[List[Any]]) -> str:
         """
         Decide next action based on current detection offset, size ratio, and no-ball history.
 
@@ -130,8 +126,7 @@ class MovementDecider:
         - Enter search mode if ball lost for too long
 
         Args:
-            ball_data: List of bounding boxes if ball detected, None otherwise
-                      Each box is (x, y, width, height)
+            ball_data: List of detections. Expected: [((x,y,w,h), conf, label), ...] or None
 
         Returns:
             str: One of the keys in movement_steps (e.g., 'small_forward', 'micro_left', 'search')
@@ -141,23 +136,33 @@ class MovementDecider:
         """
         self.logger.info(f"Raw ball_data received in MovementDecider: {ball_data}")
 
-        valid_ball_data = []
-        if ball_data:
-            valid_ball_data = [
-                bbox for bbox in ball_data if isinstance(bbox, tuple) and len(bbox) == 4
-            ]
-            if not valid_ball_data:
-                self.logger.warning(
-                    "Received ball_data with invalid bbox structures in MovementDecider."
-                )
-                # Fall through to "No ball detected this frame" logic by effectively making ball_data empty
+        processed_bboxes = []
+        if ball_data:  # ball_data can be None here, so check first
+            for item in ball_data:
+                # Expect item to be like ((x,y,w,h), confidence, label)
+                if (
+                    isinstance(item, tuple)
+                    and len(item) > 0
+                    and isinstance(item[0], tuple)
+                    and len(item[0]) == 4
+                ):
+                    all_coords_are_numbers = all(
+                        isinstance(coord, (int, float)) for coord in item[0]
+                    )
+                    if all_coords_are_numbers:
+                        processed_bboxes.append(item[0])  # Add the actual bbox tuple
+                    else:
+                        self.logger.warning(
+                            f"Invalid coordinate types in bbox: {item[0]} from {item}"
+                        )
+                else:
+                    self.logger.warning(f"Skipping malformed item in ball_data: {item}")
 
         # === Case 1: Ball is detected this frame ===
-        if valid_ball_data:  # Check against the filtered list
+        if processed_bboxes:  # Check against the filtered and processed list
             self.no_ball_count = 0
 
-            # Use the largest ball (by area) to handle multiple detections
-            largest_ball = max(valid_ball_data, key=lambda bbox: bbox[2] * bbox[3])
+            largest_ball = max(processed_bboxes, key=lambda bbox: bbox[2] * bbox[3])
             x, y, w, h = largest_ball
 
             # Calculate offset from center and area ratio

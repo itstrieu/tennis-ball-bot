@@ -12,7 +12,7 @@ This module provides:
 """
 
 from enum import Enum, auto
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Any
 import logging
 from utils.logger import Logger
 from utils.error_handler import with_error_handling, RobotError
@@ -164,9 +164,7 @@ class RobotStateMachine:
         elif self.current_state == RobotState.SEARCHING:
             self._search_count += 1
 
-    def _handle_ball_detected(
-        self, ball_data: List[Tuple[float, float, float, float]]
-    ) -> None:
+    def _handle_ball_detected(self, ball_data: List[Any]) -> None:
         """
         Handle state transitions when a ball is detected.
 
@@ -176,26 +174,43 @@ class RobotStateMachine:
         3. Resets recovery attempts when ball found
 
         Args:
-            ball_data: List of bounding boxes for detected balls
+            ball_data: List of detections. Expected: [((x,y,w,h), conf, label), ...]
         """
         self.logger.info(f"Raw ball_data received in RobotStateMachine: {ball_data}")
 
-        # Filter out invalid bounding boxes
-        # (e.g., empty tuples or not enough elements)
-        valid_ball_data = [
-            bbox for bbox in ball_data if isinstance(bbox, tuple) and len(bbox) == 4
-        ]
+        processed_bboxes = []
+        if ball_data:
+            for item in ball_data:
+                # Expect item to be like ((x,y,w,h), confidence, label)
+                if (
+                    isinstance(item, tuple)
+                    and len(item) > 0
+                    and isinstance(item[0], tuple)
+                    and len(item[0]) == 4
+                ):
+                    # Basic check, add more specific type/value checks for item[0] elements if needed
+                    all_coords_are_numbers = all(
+                        isinstance(coord, (int, float)) for coord in item[0]
+                    )
+                    if all_coords_are_numbers:
+                        processed_bboxes.append(item[0])  # Add the actual bbox tuple
+                    else:
+                        self.logger.warning(
+                            f"Invalid coordinate types in bbox: {item[0]} from {item}"
+                        )
+                else:
+                    self.logger.warning(f"Skipping malformed item in ball_data: {item}")
 
-        if not valid_ball_data:
+        if not processed_bboxes:
             self.logger.warning(
-                "Received ball_data with invalid bbox structures. "
+                "No valid bboxes found after processing raw ball_data in RobotStateMachine. "
                 "Treating as no ball detected."
             )
             self._handle_no_ball()
             return
 
         # Use the largest ball (by area) to handle multiple detections
-        largest_ball = max(valid_ball_data, key=lambda bbox: bbox[2] * bbox[3])
+        largest_ball = max(processed_bboxes, key=lambda bbox: bbox[2] * bbox[3])
         x, y, w, h = largest_ball
 
         # Calculate offset from center and area
