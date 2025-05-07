@@ -174,29 +174,42 @@ class RobotController:
             return
 
         try:
-            # Get movement parameters from config
+            if (
+                not self.config
+                or not hasattr(self.config, "movement_steps")
+                or self.config.movement_steps is None
+            ):
+                self.logger.error("Movement steps configuration is missing or invalid.")
+                return
+
             params = self.config.movement_steps.get(action)
             if not params:
                 self.logger.error(f"Unknown action: {action}")
                 return
 
-            # Check for obstacles before any forward movement
+            # Obstacle check for any action that involves 'move_forward'
+            # This is a pre-check. Continuous checking should be in MotionModel or a looped execute_motion.
             if (
-                params["method"] == "move_forward"
-                and self.motion.ultrasonic.is_obstacle()
-            ):
-                self.logger.warning("Obstacle detected, stopping movement")
-                self.motion.stop()
-                return
+                "move_forward" in params["method"]
+            ):  # Check if method name contains move_forward
+                if self.motion.ultrasonic.is_obstacle():
+                    self.logger.warning(
+                        f"Obstacle detected by pre-check before action '{action}', stopping."
+                    )
+                    await self.motion.stop()  # Ensure stop is awaited
+                    return
 
             # Execute the movement
-            method = getattr(self.motion, params["method"])
-            await method(speed=params["speed"], duration=params["time"])
+            method_to_call = getattr(self.motion, params["method"])
+
+            # For forward movements, we might want a more robust solution here later,
+            # such as a modified move_forward in MotionModel that checks obstacles continuously.
+            await method_to_call(speed=params["speed"], duration=params["time"])
 
         except Exception as e:
             self.logger.error(f"Error executing motion {action}: {str(e)}")
-            # Stop immediately on motion error
-            self.motion.stop()
+            if self.motion:
+                await self.motion.stop()  # Ensure stop is awaited
             self.is_running = False  # Signal loop to stop
             raise RobotError(f"Motion execution failed: {str(e)}", "robot_controller")
 
