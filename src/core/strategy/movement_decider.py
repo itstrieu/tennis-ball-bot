@@ -139,6 +139,8 @@ class MovementDecider:
         Raises:
             RobotError: If decision making fails
         """
+        self.logger.info(f"Raw ball_data received in MovementDecider: {ball_data}")
+
         valid_ball_data = []
         if ball_data:
             valid_ball_data = [

@@ -178,6 +178,8 @@ class RobotStateMachine:
         Args:
             ball_data: List of bounding boxes for detected balls
         """
+        self.logger.info(f"Raw ball_data received in RobotStateMachine: {ball_data}")
+
         # Filter out invalid bounding boxes
         # (e.g., empty tuples or not enough elements)
         valid_ball_data = [
