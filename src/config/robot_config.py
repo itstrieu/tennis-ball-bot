@@ -90,7 +90,7 @@ class RobotConfig:
 
     # Basic speeds & thresholds
     speed: int = 85  # Higher base speed
-    center_rotate_speed: int = 60  # Higher rotation speed
+    center_rotate_speed: int = 50  # Higher rotation speed
     search_rotate_speed: int = 60  # Higher search speed
     inter_step_pause: float = 0.5
 
@@ -173,7 +173,7 @@ class RobotConfig:
                 "micro_left": {
                     "method": "rotate_left",
                     "speed": self.center_rotate_speed,
-                    "time": 0.1,
+                    "time": 0.05,
                 },
                 "step_right": {
                     "method": "rotate_right",
@@ -183,7 +183,7 @@ class RobotConfig:
                 "micro_right": {
                     "method": "rotate_right",
                     "speed": self.center_rotate_speed,
-                    "time": 0.1,
+                    "time": 0.05,
                 },
                 "stop": {"method": "stop", "speed": 0, "time": 1.0},
                 "search": {
