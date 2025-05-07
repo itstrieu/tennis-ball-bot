@@ -356,18 +356,24 @@ class StreamServer:
                         last_action_str = getattr(
                             self.controller, "last_executed_action", "N/A"
                         )
-                        if (
-                            last_action_str is None
-                        ):  # Ensure it's not None if attribute exists but is None
+                        if last_action_str is None:
                             last_action_str = "N/A"
 
-                    status_text = (
-                        f"State: {current_state_name}\nLast Action: {last_action_str}"
+                    action_display = (
+                        f"\nLast Action: {last_action_str}"
+                        if last_action_str != "N/A"
+                        else ""
                     )
+                    status_text = f"State: {current_state_name}{action_display}"
                 except AttributeError as e:
                     self.logger.warning(f"Attribute error getting state/action: {e}")
+                    action_display_on_error = (
+                        f"\nLast Action: Error ({e})"
+                        if last_action_str != "N/A"
+                        else f"\nLast Action: Error (Detail N/A)"
+                    )
                     status_text = (
-                        f"State: {current_state_name}\nLast Action: Error ({e})"
+                        f"State: {current_state_name}{action_display_on_error}"
                     )
                 except Exception as e:
                     self.logger.error(
@@ -375,7 +381,6 @@ class StreamServer:
                     )
                     status_text = "Error retrieving status from state machine"
             elif self.controller and isinstance(self.controller, RobotController):
-                # Fallback if only controller is available
                 controller_is_running = getattr(self.controller, "is_running", False)
                 status_text = f"Controller Status: {'Running' if controller_is_running else 'Stopped'}"
 
