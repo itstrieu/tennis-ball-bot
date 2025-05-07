@@ -178,7 +178,8 @@ class RobotStateMachine:
         Args:
             ball_data: List of bounding boxes for detected balls
         """
-        # Filter out invalid bounding boxes (e.g., empty tuples or not enough elements)
+        # Filter out invalid bounding boxes
+        # (e.g., empty tuples or not enough elements)
         valid_ball_data = [
             bbox for bbox in ball_data if isinstance(bbox, tuple) and len(bbox) == 4
         ]
@@ -214,9 +215,23 @@ class RobotStateMachine:
                 self._transition_to_state(RobotState.APPROACHING)
         elif self.current_state == RobotState.APPROACHING:
             # Ball is close enough
-            stop_threshold = self.config.thresholds["stop"]
-            if area > self.config.target_area * stop_threshold:
-                self._transition_to_state(RobotState.STOPPED)
+            # Linter error "Object of type 'None' is not subscriptable" for thresholds['stop']
+            # Assuming self.config and self.config.thresholds are valid.
+            if (
+                self.config
+                and hasattr(self.config, "thresholds")
+                and self.config.thresholds is not None
+                and "stop" in self.config.thresholds
+            ):
+                stop_threshold = self.config.thresholds["stop"]
+                if area > self.config.target_area * stop_threshold:
+                    self._transition_to_state(RobotState.STOPPED)
+            else:
+                self.logger.error(
+                    "Config or thresholds not properly set for APPROACHING state."
+                )
+                # Potentially transition to an error state or handle differently
+                self._transition_to_error("Config error in APPROACHING state")
 
     def _update_state_data(
         self, ball_data: Optional[List[Tuple[float, float, float, float]]]
@@ -249,9 +264,11 @@ class RobotStateMachine:
         if new_state != self.current_state:
             self.previous_state = self.current_state
             self.current_state = new_state
-            self.logger.info(
-                f"State transition: {self.previous_state.name} -> {self.current_state.name}"
+            log_message = (
+                f"State transition: {self.previous_state.name} -> "
+                f"{self.current_state.name}"
             )
+            self.logger.info(log_message)
 
     def _transition_to_error(self, error_message: str) -> None:
         """
