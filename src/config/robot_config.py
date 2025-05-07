@@ -96,7 +96,7 @@ class RobotConfig:
 
     # Ultrasonic Sensor Configuration
     ground_distance: int = 50  # Expected distance to ground in cm
-    obstacle_threshold: int = 40  # If distance < this, likely an obstacle
+    obstacle_threshold: int = 30  # If distance < this, likely an obstacle
     error_threshold: int = 5  # Allowable error in ground distance
 
     # Target areas and thresholds

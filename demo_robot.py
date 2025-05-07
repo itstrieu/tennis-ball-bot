@@ -102,7 +102,9 @@ class DemoRobot:
             # Start streaming server in the background
             self.logger.info("Starting streaming server...")
             self.stream_server = StreamServer(self.config)
-            self.stream_server.set_components(self.camera, self.vision)
+            self.stream_server.set_components(
+                camera=self.camera, vision=self.vision, controller=self.controller
+            )
             await self.stream_server.start()
 
             # Start the robot controller
