@@ -162,50 +162,133 @@ class MovementDecider:
         if processed_bboxes:  # Check against the filtered and processed list
             self.no_ball_count = 0
 
-            largest_ball = max(processed_bboxes, key=lambda bbox: bbox[2] * bbox[3])
-            x, y, w, h = largest_ball
+            # Sort balls by area (w*h) in descending order
+            processed_bboxes.sort(key=lambda bbox: bbox[2] * bbox[3], reverse=True)
 
-            # Calculate offset from center and area ratio
-            bbox_center_x = x + (w / 2)
-            offset = (
-                bbox_center_x
-                - self.config.camera_offset
-                - (self.config.frame_width / 2)
-            )
-            area = w * h
-            ratio = area / self.config.target_area if self.config.target_area > 0 else 0
+            chosen_ball = None
+            if len(processed_bboxes) > 1:
+                largest_ball_bbox = processed_bboxes[0]
+                second_largest_ball_bbox = processed_bboxes[1]
 
-            self.last_area = area
-            self.last_seen_valid = True  # Mark that we just saw the ball
-
-            # 1. Stop if the ball is close enough (based on size ratio)
-            if ratio >= self.config.thresholds["stop"]:
-                self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
-                return "stop"
-
-            # 2. If centered, move forward (speed depends on distance)
-            if abs(offset) <= self.config.center_threshold:
-                if ratio >= self.config.thresholds["micro"]:
-                    self.logger.info(
-                        f"[DECIDE] micro_forward (centered + close, ratio={ratio:.2f}, offset={offset})"
-                    )
-                    return "micro_forward"
-                else:
-                    self.logger.info(
-                        f"[DECIDE] small_forward (centered, ratio={ratio:.2f}, offset={offset})"
-                    )
-                    return "small_forward"
-
-            # 3. If off-center, rotate to center (speed depends on offset)
-            if abs(offset) > self.config.center_threshold:
-                if abs(offset) > self.config.center_threshold * 2:
-                    choice = "step_left" if offset < 0 else "step_right"
-                else:
-                    choice = "micro_left" if offset < 0 else "micro_right"
-                self.logger.info(
-                    f"[DECIDE] {choice} (off-center, offset={offset:.2f}, ratio={ratio:.2f})"
+                largest_area = largest_ball_bbox[2] * largest_ball_bbox[3]
+                second_largest_area = (
+                    second_largest_ball_bbox[2] * second_largest_ball_bbox[3]
                 )
-                return choice
+
+                # Check for division by zero, though largest_area should be > 0 if a ball is detected
+                if (
+                    largest_area > 0
+                    and (second_largest_area / largest_area)
+                    >= self.config.multiple_ball_area_similarity_threshold
+                ):
+                    # More than one ball of similar size, choose the one closest to the center
+                    self.logger.info(
+                        "Multiple similar-sized balls detected. Choosing closest to center."
+                    )
+                    # Consider only balls that are similar in size to the largest
+                    similar_sized_balls = [
+                        b
+                        for b in processed_bboxes
+                        if (b[2] * b[3] / largest_area)
+                        >= self.config.multiple_ball_area_similarity_threshold
+                    ]
+
+                    min_offset_ball = None
+                    min_abs_offset_val = float("inf")
+
+                    for ball_bbox in similar_sized_balls:
+                        ball_x, _, ball_w, _ = ball_bbox
+                        bbox_center_x = ball_x + (ball_w / 2)
+                        current_offset = (
+                            bbox_center_x
+                            - self.config.camera_offset
+                            - (self.config.frame_width / 2)
+                        )
+                        if abs(current_offset) < min_abs_offset_val:
+                            min_abs_offset_val = abs(current_offset)
+                            min_offset_ball = ball_bbox
+
+                    if min_offset_ball:
+                        chosen_ball = min_offset_ball
+                        self.logger.info(
+                            f"Chose ball {chosen_ball} closest to center from similar sized balls."
+                        )
+                    else:  # Should not happen if similar_sized_balls is not empty
+                        chosen_ball = largest_ball_bbox
+                        self.logger.warning(
+                            "Could not determine closest ball among similar ones, defaulting to largest."
+                        )
+                else:
+                    # Largest ball is significantly larger or only one/two balls and not similar
+                    chosen_ball = largest_ball_bbox
+                    self.logger.info(f"Choosing largest ball: {chosen_ball}")
+            elif processed_bboxes:  # Only one ball detected
+                chosen_ball = processed_bboxes[0]
+                self.logger.info(f"Only one ball detected: {chosen_ball}")
+
+            if not chosen_ball:
+                # This case should ideally not be reached if processed_bboxes is not empty.
+                # Fallback or log error, then decide to search or handle appropriately.
+                self.logger.warning(
+                    "No ball chosen despite detection. Defaulting to search."
+                )
+                # Transition to no ball detected logic or return search
+                # For now, let's increment no_ball_count and proceed to Case 2 logic
+                self.no_ball_count += 1
+                # The rest of Case 2 logic will handle what to do next
+            else:
+                x, y, w, h = (
+                    chosen_ball  # Use the chosen ball for subsequent calculations
+                )
+
+                # Calculate offset from center and area ratio
+                bbox_center_x = x + (w / 2)
+                offset = (
+                    bbox_center_x
+                    - self.config.camera_offset
+                    - (self.config.frame_width / 2)
+                )
+                area = w * h
+                ratio = (
+                    area / self.config.target_area if self.config.target_area > 0 else 0
+                )
+
+                self.last_area = area
+                self.last_seen_valid = True  # Mark that we just saw the ball
+
+                # Ensure thresholds are available
+                if self.config.thresholds is None:
+                    self.logger.error("Thresholds configuration is missing!")
+                    return "search"  # Or some other safe default action
+
+                # 1. Stop if the ball is close enough (based on size ratio)
+                if ratio >= self.config.thresholds["stop"]:
+                    self.logger.info(f"[DECIDE] stop (ratio={ratio:.2f})")
+                    return "stop"
+
+                # 2. If centered, move forward (speed depends on distance)
+                if abs(offset) <= self.config.center_threshold:
+                    if ratio >= self.config.thresholds["micro"]:
+                        self.logger.info(
+                            f"[DECIDE] micro_forward (centered + close, ratio={ratio:.2f}, offset={offset})"
+                        )
+                        return "micro_forward"
+                    else:
+                        self.logger.info(
+                            f"[DECIDE] small_forward (centered, ratio={ratio:.2f}, offset={offset})"
+                        )
+                        return "small_forward"
+
+                # 3. If off-center, rotate to center (speed depends on offset)
+                if abs(offset) > self.config.center_threshold:
+                    if abs(offset) > self.config.center_threshold * 2:
+                        choice = "step_left" if offset < 0 else "step_right"
+                    else:
+                        choice = "micro_left" if offset < 0 else "micro_right"
+                    self.logger.info(
+                        f"[DECIDE] {choice} (off-center, offset={offset:.2f}, ratio={ratio:.2f})"
+                    )
+                    return choice
 
         # === Case 2: No ball detected this frame ===
         self.no_ball_count += 1

@@ -62,6 +62,7 @@ class RobotConfig:
         center_threshold: Centering tolerance
         max_no_ball: Maximum consecutive no-ball detections
         max_recovery_attempts: Maximum recovery attempts
+        multiple_ball_area_similarity_threshold: Threshold for determining if multiple detected balls are similar in size
         movement_steps: Movement step definitions
         thresholds: Area ratio thresholds
         dev_slowdown: Development mode slowdown factor
@@ -104,6 +105,11 @@ class RobotConfig:
     center_threshold: int = 25
     max_no_ball: int = 3
     max_recovery_attempts: int = 3
+
+    # Threshold for determining if multiple detected balls are similar in size.
+    # If (area of 2nd largest / area of largest) >= this threshold,
+    # the ball closest to the center is chosen. Otherwise, the largest is chosen.
+    multiple_ball_area_similarity_threshold: float = 0.8
 
     # Movement parameters
     movement_steps: Optional[Dict[str, MovementParams]] = None
