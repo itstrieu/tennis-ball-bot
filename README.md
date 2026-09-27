@@ -2,6 +2,8 @@
 
 A Raspberry Pi robot that finds tennis balls, drives to them and picks them up. Built February to May 2025 with a team of mechanical engineering students. I wrote the software: vision, data, training, and movement control.
 
+The original plan is in the [Project Notebook](project_notebook.md), and progress against it is in the [To-Do List](todo_list.md).
+
 <video src="https://github.com/user-attachments/assets/51e9fd58-1a18-44bb-ae33-781211b183f4"></video>
 
 ## What it does
