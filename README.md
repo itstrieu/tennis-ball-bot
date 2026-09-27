@@ -22,6 +22,7 @@ A live view of the detection feed streams through FastAPI and a Cloudflare tunne
 - Planned the split so that the test set holds real-world footage only.
 - Fine-tuned YOLO over multiple epochs, with MLflow tracking the test run.
 - Ran error analysis on false positives and false negatives (`src/training/analyze_errors.py`, `visualize_errors.py`).
+- Evaluated the final model on a held-out test set of real-world footage the model never saw in training: precision and recall above 90%.
 
 **Targets set before training:** mAP@0.5 as the metric to optimize. Latency of at least 20 FPS, precision of at least 90% and recall of at least 85% as thresholds to meet.
 
@@ -60,4 +61,3 @@ These were in the original plan and never finished:
 - Prometheus and Grafana monitoring on the Pi
 - Automated retraining through CI/CD
 - LIDAR
-- A final evaluation report on a holdout set
