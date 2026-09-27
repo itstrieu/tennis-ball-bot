@@ -23,12 +23,12 @@ A live view of the detection feed streams through FastAPI and a Cloudflare tunne
 - Fine-tuned YOLO over multiple epochs, with MLflow tracking the test run.
 - Ran error analysis on false positives and false negatives (`src/training/analyze_errors.py`, `visualize_errors.py`).
 - I chose the base model and designed the dataset: my own photos taken on several tennis courts at different times of day, plus online images, all labeled by hand.
-- Final model results:
+- Trained on 6,396 images. Final model results:
 
-  | Split | Precision | Recall | mAP@0.5 | mAP@0.5:0.95 |
-  |---|---|---|---|---|
-  | Validation | 97.7% | 94.9% | 98.1% | 78.8% |
-  | Held-out test | 95.9% | 94.6% | 98.2% | 87.7% |
+  | Split | Images | Precision | Recall | mAP@0.5 | mAP@0.5:0.95 |
+  |---|---|---|---|---|---|
+  | Validation | 914 | 97.7% | 94.9% | 98.1% | 78.8% |
+  | Held-out test | 432 | 95.9% | 94.6% | 98.2% | 87.7% |
 
 **Targets set before training:** mAP@0.5 as the metric to optimize. Latency of at least 20 FPS, precision of at least 90% and recall of at least 85% as thresholds to meet.
 
