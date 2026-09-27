@@ -60,7 +60,7 @@
 - [ ] Tag and version the final dataset (e.g., `v1.0`) for reproducibility  
 - [ ] Log training configs (batch size, epochs, augmentations) into MLflow  
 - [ ] Document key takeaways from error analysis (patterns, failure cases)  
-- [ ] Validate final model on a holdout/test split not seen during training  
+- [x] Validate final model on a holdout/test split not seen during training  
 - [ ] Export evaluation report (e.g., precision, recall, confusion matrix)  
 
 ---
