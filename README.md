@@ -22,7 +22,7 @@ A live view of the detection feed streams through FastAPI and a Cloudflare tunne
 - Planned the split so that the test set holds real-world footage only.
 - Fine-tuned YOLO over multiple epochs, with MLflow tracking the test run.
 - Ran error analysis on false positives and false negatives (`src/training/analyze_errors.py`, `visualize_errors.py`).
-- I chose the base model and designed the dataset: my own photos taken on several tennis courts at different times of day, plus online images, all labeled by hand.
+- I chose the base model and designed the dataset: my own video recorded on several tennis courts at different times of day, plus online images, with the frames labeled by hand. The test set is real-world footage only.
 - Trained on 6,396 images. Final model results:
 
   | Split | Images | Precision | Recall | mAP@0.5 | mAP@0.5:0.95 |
